@@ -30,14 +30,15 @@
 #include <locale.h>
 #include <sched.h>
 #include <stddef.h>
+#include <assert.h>
 
+#include "config.h"
 #include "budgets.h"
 #include "cgroup.h"
 #include "cpuinfo.h"
 #include "mapper.h"
 #include "util.h"
 #include "perfMulti/perThread_perf.h"
-#include <boost/filesystem.hpp>
 
 using namespace std;
 using std::string;
@@ -541,7 +542,29 @@ PerfData::~PerfData()
 std::map<int, PerfData *> perfdata;
 int main(int argc, char *argv[])
 {
+    int init_error = 0;
+    int appno = 1;
+    std::map<int, int> files;
+    struct dirent *de;
+    std::map<int, int>::iterator i;
+    std::map<int, PerfData *>::iterator perfiter;
+    int appiter = 0;
+    DIR *dr;
+    const char *cgroot = "/sys/fs/cgroup";
+    const char *cntrlr = "cpuset";
+
     setlocale(LC_ALL, "");
+
+    if (geteuid() != 0) {
+        fprintf(stderr, "I need root access for %s\n", cgroot);
+        return 1;
+    }
+
+    if (mkdir(SAM_RUN_DIR, 0) < 0 && errno != EEXIST) {
+        fprintf(stderr, "Failed to create %s: %s\n", SAM_RUN_DIR, strerror(errno));
+        exit(EXIT_FAILURE);
+    }
+
 
     // Code Added
     pid_t tid[200];
@@ -553,16 +576,6 @@ int main(int argc, char *argv[])
     signal(SIGQUIT, &sigterm_handler);
     signal(SIGINT, &sigterm_handler);
     signal(SIGUSR1, &siginfo_handler);
-    int init_error = 0;
-    int appno = 1;
-    std::map<int, int> files;
-    struct dirent *de;
-    std::map<int, int>::iterator i;
-    std::map<int, PerfData *>::iterator perfiter;
-    int appiter = 0;
-    DIR *dr;
-    const char *cgroot = "/sys/fs/cgroup";
-    const char *cntrlr = "cpuset";
 
     cpu_set_t *remaining_cpus;
     size_t rem_cpus_sz;
@@ -643,10 +656,10 @@ RESUME:
     appno = 1;
     files.clear();
     resetApps();
-    dr = opendir("/u/srikanth/app_proc");
+    dr = opendir(SAM_RUN_DIR);
 
     if (dr == NULL) {
-        printf("Could not open current directory");
+        printf("Could not open " SAM_RUN_DIR);
         return 0;
     }
 

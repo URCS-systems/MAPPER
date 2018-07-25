@@ -26,6 +26,7 @@
 #include <utility>
 #include <vector>
 
+#include "config.h"
 #include "cgroup.h"
 #include <boost/filesystem.hpp>
 using namespace std;
@@ -116,7 +117,6 @@ int main(int argc, char *argv[])
 
     std::cout << "Command to be executed: " << command_exec << '\n';
 
-    // boost::filesystem::create_directories("/u/srikanth/a/b/c");
     pid_t initial_pid = fork();
 
     if (initial_pid == 0) {
@@ -130,8 +130,14 @@ int main(int argc, char *argv[])
         std::cout << " Container launcher PID " << initial_pid << " " << filename;
         SharGetDescendants(filename, std::to_string(initial_pid), files, execno);
 
-        string path_to_application = "/u/srikanth/app_proc/" + std::to_string(initial_pid);
-        boost::filesystem::create_directories(path_to_application.c_str());
+        char app_path[1024];
+        snprintf(app_path, sizeof app_path, SAM_RUN_DIR "/%d", initial_pid);
+
+        if (mkdir(app_path, 0) < 0 && errno != EEXIST) {
+            fprintf(stderr, "Failed to create %s: %s\n", app_path, strerror(errno));
+            exit(EXIT_FAILURE);
+        }
+
         /* Maintain active list of tasks for which performance counters have been
          * setup. Set up the counters for the other tasks. Read and analyze the
          * counters periodically to determine the parallelism needed. Do not move
@@ -183,8 +189,9 @@ int main(int argc, char *argv[])
                    WTERMSIG(status));
         }
 
-        string rem_path = "rmdir " + path_to_application;
-        system(rem_path.c_str());
+        if (rmdir(app_path) != 0) {
+            fprintf(stderr, "Failed to remove %s: %s\n", app_path, strerror(errno));
+        }
         if (cg_remove_cgroup(cgroup_root, controller, cg_name) != 0)
             perror("Failed to remove cgroup");
     }
