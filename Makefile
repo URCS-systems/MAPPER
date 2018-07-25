@@ -8,8 +8,6 @@ all: samd sam-launch PerTask
 
 samd: SAM_equi.cpp cpuinfo.o util.o budgets.o cgroup.o perfMulti/perThread_perf.o
 	$(CC) $(CFLAGS) -std=gnu++17 $^ -o $@ $(LDFLAGS)
-	sudo chown root samd
-	sudo chmod u+s samd
 
 sam-launch: launch_wrapper.cpp cgroup.o util.o
 	$(CC) $(CFLAGS) -std=gnu++17 $^ -o $@ $(LDFLAGS)
