@@ -17,5 +17,7 @@ sam-launch: launch_wrapper.cpp cgroup.o util.o
 PerTask: PerTask.c perf_util.o
 	$(CC) $(CFLAGS) -I/usr/include/perfmon $^ -o $@ $(LDFLAGS)
 
+.PHONY: clean
+
 clean:
 	$(RM) samd sam-launch PerTask *.o
