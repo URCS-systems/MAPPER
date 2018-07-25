@@ -114,6 +114,9 @@ void setPerfAttr(struct perf_event_attr pea, uint64_t EVENT,int group_fd,int* fd
    //pea[cpu].exclude_hv=1; 
    pea.read_format=PERF_FORMAT_GROUP | PERF_FORMAT_ID;
    (*fd)=perf_event_open(&pea,tid,cpu,group_fd,0);                         //group leader has group id -1
+   if((*fd)==-1)
+	   printf("Error! perf_event_open not set for TID:%d for event:%llx\n",tid,EVENT);
+
    ioctl((*fd), PERF_EVENT_IOC_ID, id);          //retrieve identifier for first counter
 
 

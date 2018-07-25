@@ -420,6 +420,7 @@ void PerfData::printCounters(int index)
                 options->counters[7].delta=THREADS.event[index][5]; //L2_MISSES
                 options->counters[8].delta=THREADS.event[index][4]; //LLC_MISSES
                 options->counters[9].delta=THREADS.event[index][2]; //REMOTE_HITM
+	//	                           THREADS.event[index][3]; //REMOTE DRAM  
 	
 		if(PRINT_COUNT) //set to false in Macro to disable
                 { printf("==============PrintCounters========\n");
@@ -431,7 +432,7 @@ void PerfData::printCounters(int index)
                   printf("L2 MISSES: %lld\n",options->counters[7].delta);         //L2_MISSES
                   printf("LLC MISSES: %lld\n",options->counters[8].delta);        //LLC_MISSES
                   printf("REMOTE_HITM: %lld\n", options->counters[9].delta);      //REMOTE_HITM
-
+                  /*printf("REMOTE DRAM: %lld\n", options->counters[2].delta);*/  //REMOTE_DRAM
 		}
 
   //      
@@ -530,7 +531,7 @@ void PerfData::readCounters(int index)
     
     
 
-    printf("ReadCounter printCounters\n");
+  //  printf("ReadCounter printCounters\n");
     printCounters(index);
     return;
 }
@@ -689,19 +690,18 @@ RESUME:
     appiter = 0;
 
     std::cout << "\n PIDs tracked: ";
-    //Code added by me
+    //Code added 
     this_index=0;
      for (i = files.begin(); i != files.end(); ++i) 
      {    tid[this_index++]=i->first;
 	    printf("TID:%d\n",i->first);
      }
         
-      //Comment added by Sayak Chakraborti: TODO make another paramter that will contain event list (list of 8 events per 1 second interval for all PIDs)
+      //Comment added by Sayak Chakraborti: 
       count_event_perfMultiplex(tid,this_index); //Comment added by Sayak Chakraborti, call this function to count for all tids for a particular interval of time
-      displayTIDEvents(tid,this_index);
-      //Instead of printing the values TID wise, populate options_t struct
-        // copyValues(tid,this_index);
-      //                                
+      displayTIDEvents(tid,this_index); //required to copy values to my data structures
+      
+                                     
 
    
   
