@@ -3,9 +3,63 @@
  */
 
 #include "perThread_perf.h"
+#include <stdbool.h>
 #define PRINT false
 
-void initialize_events()
+uint64_t EVENT[8];
+
+struct perf_stat *threads = NULL;
+
+static long perf_event_open(struct perf_event_attr *hw_event, pid_t pid, int cpu, int group_fd,
+                            unsigned long flags)
+{
+    int ret;
+    ret = syscall(__NR_perf_event_open, hw_event, pid, cpu, group_fd, flags);
+    return ret;
+}
+
+void setPerfAttr(struct perf_event_attr pea, uint64_t EVENT, int group_fd, int *fd, uint64_t *id,
+                 int cpu, pid_t tid)
+{
+
+    memset(&pea, 0, sizeof(struct perf_event_attr)); // allocating memory
+    pea.type = PERF_TYPE_RAW;
+    pea.size = sizeof(struct perf_event_attr);
+    pea.config = EVENT;
+    pea.disabled = 1;
+    // pea[cpu].exclude_kernel=1;
+    // pea[cpu].exclude_hv=1;
+    pea.read_format = PERF_FORMAT_GROUP | PERF_FORMAT_ID;
+    (*fd) = perf_event_open(&pea, tid, cpu, group_fd,
+                            0); // group leader has group id -1
+    if ((*fd) == -1)
+        printf("Error! perf_event_open not set for TID:%d for event:%" PRIu64 "\n", tid, EVENT);
+
+    ioctl((*fd), PERF_EVENT_IOC_ID, id); // retrieve identifier for first counter
+}
+
+void start_event(int fd)
+{
+    ioctl(fd, PERF_EVENT_IOC_RESET, PERF_IOC_FLAG_GROUP);
+    ioctl(fd, PERF_EVENT_IOC_ENABLE, PERF_IOC_FLAG_GROUP);
+}
+
+void stop_read_counters(struct read_format *rf, int fd, char *buf, int size, uint64_t *val1,
+                        uint64_t *val2, uint64_t id1, uint64_t id2)
+{
+    ioctl(fd, PERF_EVENT_IOC_DISABLE, PERF_IOC_FLAG_GROUP);
+    read(fd, buf, size);
+
+    uint64_t i;
+    // read counter values
+    for (i = 0; i < (rf->nr); i++) {
+        if (rf->values[i].id == id1) (*val1) = rf->values[i].value;
+
+        if (rf->values[i].id == id2) (*val2) = rf->values[i].value;
+    }
+}
+
+void initialize_events(void)
 {
 
     EVENT[0] = 0x3c;   // UNHALTED_CORE_CYCLES
@@ -22,7 +76,7 @@ void count_event_perfMultiplex(pid_t tid[], int index_tid)
 {
     // Initialize time interval to count
     int millisec = TIME_IN_MILLI_SEC;
-    struct timespec tim, tim2;
+    struct timespec tim;
     tim.tv_sec = millisec / 1000;
     tim.tv_nsec = (millisec % 1000) * 1000000;
 

@@ -4,6 +4,10 @@
 #include <stdbool.h>
 #include <stddef.h>
 
+#if defined(__cplusplus)
+extern "C" {
+#endif
+
 int cg_create_cgroup(const char *root,
                      const char *controller,
                      const char *path);
@@ -43,5 +47,9 @@ int cg_read_intlist(const char *root,
                     const char *controller,
                     const char *path,
                     const char *param, int **value_in, size_t *length_in);
+
+#if defined(__cplusplus)
+};
+#endif
 
 #endif

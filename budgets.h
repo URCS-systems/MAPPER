@@ -2,7 +2,14 @@
 #define BUDGETS_H
 
 #include <stddef.h>
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
 #include <sched.h>
+
+#if defined(__cplusplus)
+extern "C" {
+#endif
 
 /*
  * Budgeter function type.
@@ -33,5 +40,9 @@ budget_no_hyperthread(cpu_set_t *old_cpuset, cpu_set_t *new_cpuset,
 
 
 // extern budgeter_t budgeter_functions[];
+
+#if defined(__cplusplus)
+};
+#endif
 
 #endif

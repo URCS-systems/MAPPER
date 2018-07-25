@@ -1,6 +1,3 @@
-// Added for perfMultiplex
-#include "perfMulti/perThread_perf.c"
-
 #include <dirent.h>
 #include <err.h>
 #include <errno.h>
@@ -39,6 +36,7 @@
 #include "cpuinfo.h"
 #include "mapper.h"
 #include "util.h"
+#include "perfMulti/perThread_perf.h"
 #include <boost/filesystem.hpp>
 
 using namespace std;
@@ -415,15 +413,15 @@ void PerfData::printCounters(int index)
     {
         printf("==============PrintCounters========\n");
         printf(" TID:%d\n", THREADS.tid[index]);
-        printf("UNHALTED CYCLES: %lld\n",
+        printf("UNHALTED CYCLES: %'" PRIu64 "\n",
                options->counters[0].delta);                            // UNHALTED_CYCLES
-        printf("INSTRUCTIONS: %lld\n", options->counters[1].delta);    // INSTR ;
-        printf("L3 MISSES: %lld\n", options->counters[5].delta);       // L3_MISSES
-        printf("L3 HITS: %lld\n", options->counters[6].delta);         // L3_HIT
-        printf("L2 MISSES: %lld\n", options->counters[7].delta);       // L2_MISSES
-        printf("LLC MISSES: %lld\n", options->counters[8].delta);      // LLC_MISSES
-        printf("REMOTE_HITM: %lld\n", options->counters[9].delta);     // REMOTE_HITM
-        /*printf("REMOTE DRAM: %lld\n", options->counters[2].delta);*/ // REMOTE_DRAM
+        printf("INSTRUCTIONS: %'" PRIu64 "\n", options->counters[1].delta);    // INSTR ;
+        printf("L3 MISSES: %'" PRIu64 "\n", options->counters[5].delta);       // L3_MISSES
+        printf("L3 HITS: %'" PRIu64 "\n", options->counters[6].delta);         // L3_HIT
+        printf("L2 MISSES: %'" PRIu64 "\n", options->counters[7].delta);       // L2_MISSES
+        printf("LLC MISSES: %'" PRIu64 "\n", options->counters[8].delta);      // LLC_MISSES
+        printf("REMOTE_HITM: %'" PRIu64 "\n", options->counters[9].delta);     // REMOTE_HITM
+        /*printf("REMOTE DRAM: %" PRIu64 "\n", options->counters[2].delta);*/ // REMOTE_DRAM
     }
 
     //
@@ -543,6 +541,8 @@ PerfData::~PerfData()
 std::map<int, PerfData *> perfdata;
 int main(int argc, char *argv[])
 {
+    setlocale(LC_ALL, "");
+
     // Code Added
     pid_t tid[200];
     int this_index = 0;
@@ -594,9 +594,6 @@ int main(int argc, char *argv[])
         printf("pid_max = %d\n", pid_max);
         apps_array = (struct appinfo **)calloc(pid_max, sizeof *apps_array);
         fclose(pid_max_fp);
-
-        /* set locale */
-        setlocale(LC_NUMERIC, "");
 
         /* get CPU topology */
         if ((cpuinfo = get_cpuinfo())) {

@@ -1,4 +1,9 @@
+#ifndef PER_THREAD_H
+#define PER_THREAD_H
+
+#ifndef _GNU_SOURCE
 #define _GNU_SOURCE /* See feature_test_macros(7) */
+#endif
 #include <sched.h>
 #include <sys/syscall.h>
 #include <unistd.h>
@@ -39,8 +44,6 @@
 #define ITER 1         // Number of iterations
 #define EVENTS 8       // static as per code , don't change
 
-uint64_t EVENT[8];
-
 // Data structure to collect information per TID performance counters
 struct perfThread {
     pid_t tid[NUM_THREAD];
@@ -78,53 +81,32 @@ struct perf_stat {
     uint64_t id[EVENTS];
 };
 
-struct perf_stat *threads = NULL;
+#if defined(__cplusplus)
+extern "C" {
+#endif
 
-static long perf_event_open(struct perf_event_attr *hw_event, pid_t pid, int cpu, int group_fd,
-                            unsigned long flags)
-{
-    int ret;
-    ret = syscall(__NR_perf_event_open, hw_event, pid, cpu, group_fd, flags);
-    return ret;
-}
+extern uint64_t EVENT[];
+
+extern struct perf_stat *threads;
 
 void setPerfAttr(struct perf_event_attr pea, uint64_t EVENT, int group_fd, int *fd, uint64_t *id,
-                 int cpu, pid_t tid)
-{
+                 int cpu, pid_t tid);
 
-    memset(&pea, 0, sizeof(struct perf_event_attr)); // allocating memory
-    pea.type = PERF_TYPE_RAW;
-    pea.size = sizeof(struct perf_event_attr);
-    pea.config = EVENT;
-    pea.disabled = 1;
-    // pea[cpu].exclude_kernel=1;
-    // pea[cpu].exclude_hv=1;
-    pea.read_format = PERF_FORMAT_GROUP | PERF_FORMAT_ID;
-    (*fd) = perf_event_open(&pea, tid, cpu, group_fd,
-                            0); // group leader has group id -1
-    if ((*fd) == -1)
-        printf("Error! perf_event_open not set for TID:%d for event:%llx\n", tid, EVENT);
-
-    ioctl((*fd), PERF_EVENT_IOC_ID, id); // retrieve identifier for first counter
-}
-
-void start_event(int fd)
-{
-    ioctl(fd, PERF_EVENT_IOC_RESET, PERF_IOC_FLAG_GROUP);
-    ioctl(fd, PERF_EVENT_IOC_ENABLE, PERF_IOC_FLAG_GROUP);
-}
+void start_event(int fd);
 
 void stop_read_counters(struct read_format *rf, int fd, char *buf, int size, uint64_t *val1,
-                        uint64_t *val2, uint64_t id1, uint64_t id2)
-{
-    ioctl(fd, PERF_EVENT_IOC_DISABLE, PERF_IOC_FLAG_GROUP);
-    read(fd, buf, size);
+                        uint64_t *val2, uint64_t id1, uint64_t id2);
 
-    int i;
-    // read counter values
-    for (i = 0; i < (rf->nr); i++) {
-        if (rf->values[i].id == id1) (*val1) = rf->values[i].value;
+void initialize_events(void);
 
-        if (rf->values[i].id == id2) (*val2) = rf->values[i].value;
-    }
-}
+void count_event_perfMultiplex(pid_t tid[], int index_tid);
+
+void displayTIDEvents(pid_t tid[], int index_tid);
+
+int searchTID(int tid);
+
+#if defined(__cplusplus)
+};
+#endif
+
+#endif  /* PER_THREAD_H */

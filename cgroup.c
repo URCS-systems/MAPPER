@@ -124,7 +124,7 @@ int cg_write_bool(const char *root,
 int cg_read_int(const char *root,
                 const char *controller,
                 const char *path,
-                const char *param, unsigned int *value_in) {
+                const char *param, int *value_in) {
     char file_path[256];
     snprintf(file_path, sizeof file_path, "%s/%s/%s/%s", root, controller, path, param);
 

@@ -20,6 +20,14 @@ struct cpuinfo {
   unsigned long clock_rate;
 };
 
+#if defined(__cplusplus)
+extern "C" {
+#endif
+
 struct cpuinfo *get_cpuinfo(void);
+
+#if defined(__cplusplus)
+};
+#endif
 
 #endif

@@ -328,15 +328,11 @@ perf_display_branch_stack(perf_event_desc_t *desc, FILE *fp)
 		if (ret)
 			errx(1, "cannot read branch stack entry");
 
-		fprintf(fp, "\tFROM:0x%016"PRIx64" TO:0x%016"PRIx64" MISPRED:%c PRED:%c IN_TX:%c ABORT:%c CYCLES:%d type:%d\n",
+		fprintf(fp, "\tFROM:0x%016"PRIx64" TO:0x%016"PRIx64" MISPRED:%c\n",
 			b.from,
 			b.to,
-			!(b.mispred || b.predicted) ? '-': (b.mispred ? 'Y' :'N'),
-			!(b.mispred || b.predicted) ? '-': (b.predicted? 'Y' :'N'),
-			(b.in_tx? 'Y' :'N'),
-			(b.abort? 'Y' :'N'),
-			b.type,
-			b.cycles);
+			!(b.mispred || b.predicted) ? '-':
+			(b.mispred ? 'Y' :'N'));
 	}
 	return (int)(n * sizeof(b) + sizeof(n));
 }
