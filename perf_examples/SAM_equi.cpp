@@ -1,3 +1,6 @@
+//Added for perfMultiplex
+#include "perfMulti/perThread_perf.c"
+
 #include <errno.h>
 #include <signal.h>
 #include <stdlib.h> // For random().
@@ -62,6 +65,8 @@ using std::vector;
 #define SHAR_COH_IND SHAR_COHERENCE_THRESH/2
 #define SHAR_PHY_CORE 10
 #define SAM_MIN_CONTEXTS 1
+
+#define  PRINT_COUNT false
 
 // Will be initialized anyway
 int num_counter_orders = 6;
@@ -355,8 +360,8 @@ class PerfData
 public:
     void initialize(int tid, int app_tid, int appno_in);
     ~PerfData();
-    void readCounters();
-    void printCounters();
+    void readCounters(int index); //argument added for copying
+    void printCounters(int index); //argument added for copying
 
     int init;
     struct options_t *options;
@@ -397,7 +402,7 @@ void PerfData::initialize(int tid, int app_tid, int appno_in)
         exit(1);
     }
     appid = 0;
-    system(commandstring.c_str());
+    //system(commandstring.c_str());
     options = (struct options_t*) membase;
 	apppid = app_tid; 
 	manage(tid, app_tid, appno_in);
@@ -405,11 +410,38 @@ void PerfData::initialize(int tid, int app_tid, int appno_in)
     init = 1;
     return;
 }
-void PerfData::printCounters()
+void PerfData::printCounters(int index)
 {
+  //code added to populate PerfData per thread options->counter.delta with values
+                options->counters[0].delta=THREADS.event[index][0];   //UNHALTED_CYCLES
+                options->counters[1].delta=THREADS.event[index][1]; //INSTR                           ;
+		options->counters[5].delta=THREADS.event[index][6]; //L3_MISSES
+                options->counters[6].delta=THREADS.event[index][7]; //L3_HIT
+                options->counters[7].delta=THREADS.event[index][5]; //L2_MISSES
+                options->counters[8].delta=THREADS.event[index][4]; //LLC_MISSES
+                options->counters[9].delta=THREADS.event[index][2]; //REMOTE_HITM
+	
+		if(PRINT_COUNT) //set to false in Macro to disable
+                { printf("==============PrintCounters========\n");
+		  printf(" TID:%d\n",THREADS.tid[index]);
+                  printf("UNHALTED CYCLES: %lld\n",options->counters[0].delta);   //UNHALTED_CYCLES
+                  printf("INSTRUCTIONS: %lld\n", options->counters[1].delta);     //INSTR                           ;
+                  printf("L3 MISSES: %lld\n",options->counters[5].delta);         //L3_MISSES
+                  printf("L3 HITS: %lld\n",options->counters[6].delta);           //L3_HIT
+                  printf("L2 MISSES: %lld\n",options->counters[7].delta);         //L2_MISSES
+                  printf("LLC MISSES: %lld\n",options->counters[8].delta);        //LLC_MISSES
+                  printf("REMOTE_HITM: %lld\n", options->counters[9].delta);      //REMOTE_HITM
+
+		}
+
+  //      
+
+
     int i;
     int num = options->countercount;
     active = 0;
+
+
     for(i=0; i < num; i++) {
 
         printf("%'20" PRIu64 " %'20" PRIu64 " %s (%.2f%% scaling, ena=%'" PRIu64 ", run=%'" PRIu64 ")\n",
@@ -479,23 +511,27 @@ void PerfData::printCounters()
 	}
 	std::cout << "Updated the app arrays too \n";
 }
-void PerfData::readCounters()
+void PerfData::readCounters(int index)
 {
-    printf ("\n PID:: %d App ID %d \n", options->pid, appid);
-    if (options->pid == 0)
+    printf ("\nreadCounters PID:: %d App ID %d \n", pid, appid);
+    if (pid == 0) //options->pid
     {
         return;
     }
-    if (kill(options->pid, 0) < 0)
+    if (kill(pid, 0) < 0)   //options->pid
         if (errno == ESRCH) {
-            printf ("Process %d does not exist \n", options->pid);
+            printf ("Process %d does not exist \n", pid);
             return;
         }
         else
             printf ("Hmmm what the hell happened??? \n");
     else
        printf(" Process exists so just continuing \n");
-    printCounters();
+    
+    
+
+    printf("ReadCounter printCounters\n");
+    printCounters(index);
     return;
 }
 
@@ -525,6 +561,12 @@ PerfData::~PerfData()
 std::map<int, PerfData*> perfdata;
 int main(int argc, char *argv[])
 {
+	//Code Added
+	 pid_t tid[200];
+	 int this_index=0;
+      //Initialize what event we want
+        initialize_events();
+
 	signal(SIGTERM, &sigterm_handler);
 	signal(SIGQUIT, &sigterm_handler);
   	signal(SIGINT, &sigterm_handler);
@@ -647,12 +689,32 @@ RESUME:
     appiter = 0;
 
     std::cout << "\n PIDs tracked: ";
-    for (i = files.begin(); i != files.end(); ++i) {
+    //Code added by me
+    this_index=0;
+     for (i = files.begin(); i != files.end(); ++i) 
+     {    tid[this_index++]=i->first;
+	    printf("TID:%d\n",i->first);
+     }
+        
+      //Comment added by Sayak Chakraborti: TODO make another paramter that will contain event list (list of 8 events per 1 second interval for all PIDs)
+      count_event_perfMultiplex(tid,this_index); //Comment added by Sayak Chakraborti, call this function to count for all tids for a particular interval of time
+      displayTIDEvents(tid,this_index);
+      //Instead of printing the values TID wise, populate options_t struct
+        // copyValues(tid,this_index);
+      //                                
+
+   
+  
+    for (i = files.begin(); i != files.end(); ++i)
+    {
 
         int pid = i->first;
-
-        std::cout << " " << i->first;
+	int my_index=searchTID(pid);  //Code added to get index in the THREADS data structure 
+       //  printf("Main my_index:%d\n",my_index);
+	
+	 std::cout << " " << i->first;
         perfiter = perfdata.find(pid);
+
         if (perfiter == perfdata.end()) {
 			std::cout << pid << " is not found in perfdata. Adding it under " << i->second << "\n";
 
@@ -668,10 +730,15 @@ RESUME:
         temp = perfiter->second;
         temp->appid = i->second - 1;
         std::cout << "PID: " << pid << "App ID: " << temp->appid << '\n';
-        temp->readCounters();
-        temp->touch = 1;
+        
+	if(my_index!=-1)
+       	temp->readCounters(my_index);
+        
+	temp->touch = 1;
         appiter++;
     }
+   
+
     for (perfiter = perfdata.begin(); perfiter != perfdata.end();) {
 
         int flag_touch = 0;
