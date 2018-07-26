@@ -169,6 +169,9 @@ void deriveAppStatistics(int num)
     int i = 0;
     // Need to add reasoning about its current placement and number of hardware
     // contexts
+    // Need to calculate performance/sec in addition to IPC to put performance
+    // in context. To do this, we need to know how many CPUs are allocated
+    // to each application. Need to add that to the App data structure.
     for (int appiter = 0; appiter < num; appiter++) {
         i = 0;
         apps[appiter].metric[0] = apps[appiter].value[0];
@@ -826,6 +829,12 @@ RESUME:
                     /*
                      * compute the CPU budget for this application, given its bottleneck
                      * [met]
+                     * TODO: 1. If the app's current placement is already correct, need to preserve it.
+                     * Should not be moving apps around unless necessary.
+                     *       2. Set max on the CPUs allocated to an app to the number of active threads
+                     *       3. New app needs fair share. So, need to force this allocation if
+                     *       enough CPUs are not free. Preferably from applications that have spare
+                     *       cores and prioritizing within them applications with least efficiency.
                      */
                     if (met == METRIC_INTER || met == METRIC_INTRA)
                         budget_collocate(apps_sorted[j]->cpuset, new_cpuset, remaining_cpus,
