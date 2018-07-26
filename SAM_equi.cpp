@@ -713,7 +713,8 @@ RESUME:
     }
     appiter = 0;
 
-    if (print_proc_creation) std::cout << "\n PIDs tracked: ";
+    //if (print_proc_creation) 
+    std::cout << "\n PIDs tracked: ";
     // Code added
     this_index = 0;
     for (i = files.begin(); i != files.end(); ++i) {
