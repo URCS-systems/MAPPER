@@ -208,7 +208,12 @@ void deriveAppStatistics(int num)
         an->metric[METRIC_MEM] = apps[an->appnoref].metric[METRIC_MEM];
         an->metric[METRIC_INTRA] = apps[an->appnoref].metric[METRIC_INTRA];
         an->metric[METRIC_INTER] = apps[an->appnoref].metric[METRIC_INTER];
+		apps[an->appnoref].metric[METRIC_IpCOREpS] = 
+				(apps[an->appnoref].value[1]/CPU_COUNT_S(CPU_ALLOC_SIZE(cpuinfo->total_cpus),an->cpuset));
+		an->metric[METRIC_IpCOREpS] = apps[an->appnoref].metric[METRIC_IpCOREpS]; 
 
+		std::cout << "App is allocated: " << CPU_COUNT_S(CPU_ALLOC_SIZE(cpuinfo->total_cpus),an->cpuset)
+				<< " CPUs \n" << "with IPCPS: " << an->metric[METRIC_IpCOREpS] << '\n';
         for (int i = 0; i < num_counter_orders; ++i) {
             if (an->bottleneck[counter_order[i]] > 0) {
                 printf("Added: App %d has bottleneck %s with metric %" PRIu64 "\n", an->pid,
