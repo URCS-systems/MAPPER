@@ -15,6 +15,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <sys/resource.h>
 #include <unistd.h>
 
 #include <algorithm>
@@ -64,7 +65,7 @@ using std::vector;
 #define SHAR_PHY_CORE 10
 #define SAM_MIN_CONTEXTS 1
 
-#define PRINT_COUNT true
+#define PRINT_COUNT false
 
 // Will be initialized anyway
 int num_counter_orders = 6;
@@ -141,7 +142,7 @@ struct appinfo {
 
 bool stoprun = false;
 bool print_counters = false;
-
+bool print_proc_creation = false;
 struct cpuinfo *cpuinfo;
 
 struct appinfo **apps_array;
@@ -285,7 +286,8 @@ int SharGetDir(string dir, string taskname, std::map<int, int> &files)
     struct dirent *dirp;
     int tmpchild = 0;
     if ((dp = opendir(dir.c_str())) == NULL) {
-        std::cout << "Error(" << errno << ") opening " << dir << std::endl;
+		if (print_proc_creation) std::cout << "Error(" << errno << ") opening " << dir << std::endl;
+		printf("Oh dear, something went wrong with read()! %s\n", strerror(errno));
         return errno;
     }
 
@@ -296,18 +298,18 @@ int SharGetDir(string dir, string taskname, std::map<int, int> &files)
 
     string childfilename = "/proc/" + taskname + "/task/" + taskname + "/children";
     std::ifstream childrd(childfilename);
-    std::cout << "Children traversal ";
+    if (print_proc_creation) std::cout << "Children traversal ";
 
     if (childrd.is_open()) {
         while (childrd >> tmpchild) {
-            std::cout << tmpchild << '\t';
+            if (print_proc_creation) std::cout << tmpchild << '\t';
             files.insert(std::pair<int, int>(tmpchild, 0));
         }
         childrd.close();
     }
     closedir(dp);
 
-    std::cout << "\n";
+    if (print_proc_creation) std::cout << "\n";
     return 0;
 }
 
@@ -327,12 +329,12 @@ int SharGetDescendants(string dirpath, string taskname, std::map<int, int> &file
        Proceed = 2, Go ahead */
     string tempfile;
 
-    std::cout << "Get Descendants " << taskname << "::  "
+    if (print_proc_creation) std::cout << "Get Descendants " << taskname << "::  "
               << "eXEC: " << exec;
     for (i = files.begin(); i != files.end(); ++i) {
         // TO DO: Have to avoid reiteration of parents
         tempfile = std::to_string(i->first);
-        std::cout << tempfile << '\t';
+        if (print_proc_creation) std::cout << tempfile << '\t';
 
         if (tempfile.compare(taskname) == 0) proceed = 1;
         if (proceed == 2 && i->second == 0) {
@@ -341,7 +343,7 @@ int SharGetDescendants(string dirpath, string taskname, std::map<int, int> &file
         }
         if (proceed == 1) proceed = 2;
     }
-    std::cout << '\n';
+    if (print_proc_creation) std::cout << '\n';
     return 0;
 }
 
@@ -395,6 +397,7 @@ void PerfData::initialize(int tid, int app_tid, int appno_in)
     appid = 0;
     // system(commandstring.c_str());
     options = (struct options_t *)membase;
+	options->countercount = 10;
     apppid = app_tid;
     manage(tid, app_tid, appno_in);
     std::cout << "Done with manage \n";
@@ -436,8 +439,8 @@ void PerfData::printCounters(int index)
     active = 0;
 
     for (i = 0; i < num; i++) {
-
-        printf("%'20" PRIu64 " %'20" PRIu64 " %s (%.2f%% scaling, ena=%'" PRIu64 ", run=%'" PRIu64
+		if (PRINT_COUNT) 
+        	printf("%'20" PRIu64 " %'20" PRIu64 " %s (%.2f%% scaling, ena=%'" PRIu64 ", run=%'" PRIu64
                ")\n",
                options->counters[i].val, options->counters[i].delta, options->counters[i].name,
                (1.0 - options->counters[i].ratio) * 100.0, options->counters[i].auxval1,
@@ -545,6 +548,27 @@ PerfData::~PerfData()
     } */
 }
 
+void setup_file_limits()
+{
+	struct rlimit limit;
+
+	limit.rlim_cur = 65535;
+	limit.rlim_max = 65535;
+	if (setrlimit(RLIMIT_NOFILE, &limit) != 0) {
+		std::cout << "setrlimit() failed with errno=%d\n" << errno;
+		exit(1);
+	}
+
+	if (getrlimit(RLIMIT_NOFILE, &limit) != 0) {
+		std::cout << "getrlimit() failed with errno=%d\n" << errno;
+		exit(1);
+	}
+	std::cout << "The soft limit is %lu\n" << limit.rlim_cur
+			<< "The hard limit is %llu\n" << limit.rlim_max;
+    system("bash -c 'ulimit -a'"); // Just a test
+	return;
+}
+
 std::map<int, PerfData *> perfdata;
 int main(int argc, char *argv[])
 {
@@ -571,7 +595,7 @@ int main(int argc, char *argv[])
         exit(EXIT_FAILURE);
     }
 
-
+	setup_file_limits();
     // Code Added
     pid_t tid[200];
     int this_index = 0;
@@ -684,12 +708,12 @@ RESUME:
     }
     appiter = 0;
 
-    std::cout << "\n PIDs tracked: ";
+    if (print_proc_creation) std::cout << "\n PIDs tracked: ";
     // Code added
     this_index = 0;
     for (i = files.begin(); i != files.end(); ++i) {
         tid[this_index++] = i->first;
-        printf("TID:%d\n", i->first);
+        if (print_proc_creation) printf("TID:%d\n", i->first);
     }
 
     // Comment added by Sayak Chakraborti:
