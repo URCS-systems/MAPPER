@@ -64,7 +64,7 @@ using std::vector;
 #define SHAR_PHY_CORE 10
 #define SAM_MIN_CONTEXTS 1
 
-#define PRINT_COUNT false
+#define PRINT_COUNT true
 
 // Will be initialized anyway
 int num_counter_orders = 6;
@@ -369,28 +369,29 @@ class PerfData
 
 void PerfData::initialize(int tid, int app_tid, int appno_in)
 {
-    std::cout << "Opening shared memmory for thread TID " << tid << std::endl;
-    std::string pidnum = std::to_string(tid);
+    std::cout << "Performing init for new thread with TID: " << tid << std::endl;
     pid = tid;
+    // std::string pidnum = std::to_string(tid);
     memsize = sizeof(struct options_t);
+	/*
     std::cout << "Opening shared memmory for thread " << pidnum << std::endl;
     memfd = shm_open(pidnum.c_str(), O_CREAT | O_RDWR, 0666);
     if (memfd == -1) {
         printf("TID: %s Shared memory failed: %s\n", pidnum.c_str(), strerror(errno));
         exit(1);
     }
-    /* configure the size of the shared memory segment */
     ftruncate(memfd, memsize);
     std::string commandstring = "sudo /u/srikanth/libpfm-4.9.0/perf_examples/./PerTask -t ";
     commandstring = commandstring + pidnum + " &";
 
     std::cout << "Command to be executed " << commandstring.c_str() << std::endl;
-    /* map the shared memory segment to the address space of the process */
     membase = (char *)mmap(0, memsize, PROT_READ | PROT_WRITE, MAP_SHARED, memfd, 0);
     if (membase == MAP_FAILED) {
         printf("cons: Map failed: %s\n", strerror(errno));
         exit(1);
-    }
+    }*/
+	// In the spirit of the prev shared memory map. 
+	membase = (char*) malloc(sizeof (struct options_t));
     appid = 0;
     // system(commandstring.c_str());
     options = (struct options_t *)membase;
@@ -521,19 +522,21 @@ void PerfData::readCounters(int index)
 
 PerfData::~PerfData()
 {
-    /* remove the mapped shared memory segment from the address space of the
-     * process */
+    /* 
+    //remove the mapped shared memory segment 
+    //from the address space of the process 
     if (munmap(membase, memsize) == -1) {
         printf("PID %d Unmap failed: %s\n", pid, strerror(errno));
         exit(1);
     }
 
-    /* close the shared memory segment as if it was a file */
     if (close(memfd) == -1) {
         printf("TID %d Close failed: %s\n", pid, strerror(errno));
         exit(1);
     }
+    */
     unmanage(pid, apppid);
+	free(membase);
     std::cout << " Done with unmanage for " << pid << " of application PID " << apppid << '\n';
     /* remove the shared memory segment from the file system
     if (shm_unlink(memname) == -1) {
