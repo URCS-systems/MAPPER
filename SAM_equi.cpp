@@ -65,7 +65,7 @@ using std::vector;
 #define SHAR_PHY_CORE 10
 #define SAM_MIN_CONTEXTS 1
 
-#define PRINT_COUNT false
+#define PRINT_COUNT true
 
 // Will be initialized anyway
 int num_counter_orders = 6;

@@ -12,3 +12,9 @@ To Do:
 -----
 1) Remote DRAM is being monitored and gathered, but not sure whether it is being used, hence haven't populated that. (Is a simple one line assignment) 
 
+FIX 1 for crashing
+------------------
+
+For some TIDs perf_event_open is unable to return a valid file descriptor. These TIDs are short-lived and I generally encounter them at near the termination of an application and are not the application TIDs. Maybe they are too short lived to make the per_event_open system call and that is the issue. Anyways I have fixed the crashing of samd by error checking some of the fds. For the time being this will hopefully work. I have tested samd and it doesn’t crash anymore. For the TIds unmonitored, the event counts has been explicitly set to 0.
+
+

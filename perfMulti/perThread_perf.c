@@ -4,7 +4,7 @@
 
 #include "perThread_perf.h"
 #include <stdbool.h>
-#define PRINT false
+#define PRINT true
 
 uint64_t EVENT[8];
 
@@ -32,31 +32,45 @@ void setPerfAttr(struct perf_event_attr pea, uint64_t EVENT, int group_fd, int *
     pea.read_format = PERF_FORMAT_GROUP | PERF_FORMAT_ID;
     (*fd) = perf_event_open(&pea, tid, cpu, group_fd,
                             0); // group leader has group id -1
-    if ((*fd) == -1)
+    if ((*fd) == -1)  //Don't start orstopt read events on this
         printf("Error! perf_event_open not set for TID:%d for event:%" PRIu64 "\n", tid, EVENT);
-
-    ioctl((*fd), PERF_EVENT_IOC_ID, id); // retrieve identifier for first counter
+     
+     if((*fd)!=-1)  
+     ioctl((*fd), PERF_EVENT_IOC_ID, id); // retrieve identifier for first counter
 }
 
 void start_event(int fd)
 {
-    ioctl(fd, PERF_EVENT_IOC_RESET, PERF_IOC_FLAG_GROUP);
-    ioctl(fd, PERF_EVENT_IOC_ENABLE, PERF_IOC_FLAG_GROUP);
+    if(fd!=-1)	
+    { ioctl(fd, PERF_EVENT_IOC_RESET, PERF_IOC_FLAG_GROUP);
+     ioctl(fd, PERF_EVENT_IOC_ENABLE, PERF_IOC_FLAG_GROUP);
+     }
 }
 
 void stop_read_counters(struct read_format *rf, int fd, char *buf, int size, uint64_t *val1,
                         uint64_t *val2, uint64_t id1, uint64_t id2)
 {
-    ioctl(fd, PERF_EVENT_IOC_DISABLE, PERF_IOC_FLAG_GROUP);
-    read(fd, buf, size);
+   if(fd!=-1)	
+   { 
+     ioctl(fd, PERF_EVENT_IOC_DISABLE, PERF_IOC_FLAG_GROUP);
+     read(fd, buf, size);
 
     uint64_t i;
     // read counter values
-    for (i = 0; i < (rf->nr); i++) {
+       for (i = 0; i < (rf->nr); i++) {
         if (rf->values[i].id == id1) (*val1) = rf->values[i].value;
 
         if (rf->values[i].id == id2) (*val2) = rf->values[i].value;
-    }
+         }
+
+   }
+   else //file descriptor was -1, hence no monitoring happened
+     {  //set these unmonitored event counts to 0
+          (*val1)=0;
+	  (*val2)=0;
+
+       }	     
+    close(fd);
 }
 
 void initialize_events(void)
@@ -169,6 +183,7 @@ void displayTIDEvents(pid_t tid[], int index_tid)
         }
     } // for close
 
+    free(threads);
     // printf("=================================================================\n");
 }
 
