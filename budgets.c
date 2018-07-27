@@ -305,10 +305,9 @@ budget_default(cpu_set_t *old_cpuset, cpu_set_t *new_cpuset,
 
     CPU_FREE(old_cpuset2);
 }
-/*
 budgeter_t budgeter_functions[] = {
     [METRIC_INTER]       = &budget_collocate,
- 	[METRIC_INTRA]       = &budget_collocate,
+    [METRIC_INTRA]       = &budget_collocate,
     [METRIC_MEM]        = &budget_spread,
     [METRIC_AVGIPC]    = &budget_no_hyperthread
-};*/
+};

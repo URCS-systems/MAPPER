@@ -37,6 +37,17 @@
 #define EVENT8 0x4f2e  //LLC_REFERENCES
 */
 
+enum perf_event {
+    EVENT_UNHALTED_CYCLES,
+    EVENT_INSTRUCTIONS,
+    EVENT_REMOTE_HITM,
+    EVENT_REMOTE_DRAM,
+    EVENT_LLC_MISSES,
+    EVENT_L2_MISSES,
+    EVENT_L3_MISSES,
+    EVENT_L3_HIT
+};
+
 #define TIME_IN_MILLI_SEC                                                                          \
     250                // total measurement time per iteration is 4 times
                        // TIME_IN_MILLI_SEC(example 250 millisecond *4 = 1 second)

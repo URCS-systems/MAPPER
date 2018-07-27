@@ -8,7 +8,8 @@ enum metric {
     METRIC_INTRA,
     METRIC_INTER,
     METRIC_REMOTE,
-	METRIC_IpCOREpS, // Instructions Per Core per Second
+    METRIC_IpCOREpS,
+    METRIC_IPS,
     N_METRICS
 };
 
