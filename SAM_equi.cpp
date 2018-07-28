@@ -67,11 +67,14 @@ using std::vector;
 #define SAM_MIN_QOS             0.85
 #define SAM_PERF_THRESH         0.05    /* in fraction of previous performance */
 #define SAM_PERF_STEP           2       /* in number of CPUs */
+#define SAM_DISTURB_PROB        0.03    /* probability of a disturbance */
 
 #define PRINT_COUNT true
 
 // Will be initialized anyway
 int num_counter_orders = 6;
+
+int random_seed = 0xFACE;
 
 struct perf_counter {
     char name[128];
@@ -156,6 +159,10 @@ struct appinfo {
      * The last time this application was measured.
      */
     struct timespec ts;
+    /**
+     * Whether the application is currently exploring resources for better performance.
+     */
+    bool exploring;
     struct appinfo *prev, *next;
 };
 
@@ -167,6 +174,12 @@ struct cpuinfo *cpuinfo;
 struct appinfo **apps_array;
 struct appinfo *apps_list;
 int num_apps = 0;
+
+static inline int guess_optimization(void) {
+    if (random() / (double) RAND_MAX < 0.5)
+        return -SAM_PERF_STEP;
+    return SAM_PERF_STEP;
+}
 
 /*
  * Reverse comparison. Produces a sorted list from largest to smallest element.
@@ -520,6 +533,8 @@ int main(int argc, char *argv[])
         return 1;
     }
 
+    srandom(random_seed);
+
     setup_file_limits();
     // Code Added
     pid_t tid[200];
@@ -817,35 +832,78 @@ RESUME:
                         history[0] * ((history[1] - 1)/(double)history[1]);
                     memcpy(apps_sorted[j]->perf_history[curr_alloc_len], history, sizeof apps_sorted[j]->perf_history[curr_alloc_len]);
 
+                    /*
+                     * Change application's fair share count if the creation of new applications
+                     * changes the fair share.
+                     */
                     if (apps_sorted[j]->curr_fair_share != fair_share
                             && apps_sorted[j]->perf_history[fair_share] != 0)
                         apps_sorted[j]->curr_fair_share = fair_share;
 
                     uint64_t curr_perf = apps_sorted[j]->perf_history[curr_alloc_len][0];
 
-                    /*
-                     * Compare current performance with previous performance, if this application
-                     * has at least two items in history.
-                     */
                     if (apps_sorted[j]->times_allocated > 1) {
-                        const int prev_alloc_len = CPU_COUNT_S(rem_cpus_sz, apps_sorted[j]->cpuset[1]);
-                        uint64_t prev_perf = apps_sorted[j]->perf_history[prev_alloc_len][0];
-
                         /*
-                         * Increase requested resources.
+                         * Compare current performance with previous performance, if this application
+                         * has at least two items in history.
                          */
-                        if (curr_perf > prev_perf 
-                            && (curr_perf - prev_perf) / (double) prev_perf >= SAM_PERF_THRESH) {
-                            per_app_cpu_budget[j] += SAM_PERF_STEP;
+                        if (CPU_EQUAL_S(rem_cpus_sz, apps_sorted[j]->cpuset[0], apps_sorted[j]->cpuset[1])) {
+                            const int prev_alloc_len = CPU_COUNT_S(rem_cpus_sz, apps_sorted[j]->cpuset[1]);
+                            uint64_t prev_perf = apps_sorted[j]->perf_history[prev_alloc_len][0];
+
+                            /*
+                             * Change requested resources.
+                             */
+                            if (curr_perf > prev_perf 
+                                && (curr_perf - prev_perf) / (double) prev_perf >= SAM_PERF_THRESH
+                                && apps_sorted[j]->exploring) {
+                                /* Keep going in the same direction. */
+                                if (prev_alloc_len < curr_alloc_len)
+                                    per_app_cpu_budget[j] += SAM_PERF_STEP;
+                                else
+                                    per_app_cpu_budget[j] -= SAM_PERF_STEP;
+                            } else {
+                                if (curr_perf < prev_perf
+                                    && (prev_perf - curr_perf) / (double) prev_perf >= SAM_PERF_THRESH) {
+                                    if (apps_sorted[j]->exploring) {
+                                        /*
+                                         * Revert to previous count if performance reduction was great enough.
+                                         */
+                                        per_app_cpu_budget[j] = prev_alloc_len;
+                                    } else {
+                                        int guess = per_app_cpu_budget[j] + guess_optimization();
+                                        apps_sorted[j]->exploring = true;
+                                        printf("[APP %5d] exploring %d -> %d\n", apps_sorted[j]->pid,
+                                                per_app_cpu_budget[j], guess);
+                                        per_app_cpu_budget[j] = guess;
+                                    }
+                                } else {
+                                    apps_sorted[j]->exploring = false;
+                                }
+                            }
+                        } else if (!apps_sorted[j]->exploring 
+                                && random() / (double) RAND_MAX <= SAM_DISTURB_PROB) {
+                            /*
+                             * Introduce random disturbances.
+                             */
+                            int guess = per_app_cpu_budget[j] + guess_optimization();
+                            apps_sorted[j]->exploring = true;
+                            printf("[APP %5d] random disturbance: %d -> %d\n", apps_sorted[j]->pid,
+                                    per_app_cpu_budget[j], guess);
+                            per_app_cpu_budget[j] = guess;
                         }
                     }
 
                     /*
                      * If we're the last application, then we get the remaining cores
                      * nobody wanted.
+                     *
+                     * TODO: move this into IPC-bottleneck budgeting
                      */
+                    /*
                     if (j == num_apps - 1)
                         per_app_cpu_budget[j] += div(cpuinfo->total_cpus, num_apps).rem;
+                        */
                 } else {
                     /*
                      * If this app has never been given an allocation, the first allocation we should 
