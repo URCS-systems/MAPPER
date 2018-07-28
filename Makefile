@@ -1,5 +1,5 @@
 LDFLAGS=-lrt -lboost_system -lboost_filesystem -lm -lstdc++ -lpfm
-CFLAGS=-Wall -Werror -Wformat=2 -Wno-unused-parameter -Wcast-qual -Wextra
+CFLAGS=-Wall -Werror -Wformat=2 -Wno-unused-parameter -Wcast-qual -Wextra -g3 -ggdb3
 
 all: samd sam-launch PerTask
 
