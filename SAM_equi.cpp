@@ -641,12 +641,7 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    if (mkdir(SAM_RUN_DIR, 0) < 0 && errno != EEXIST) {
-        fprintf(stderr, "Failed to create %s: %s\n", SAM_RUN_DIR, strerror(errno));
-        exit(EXIT_FAILURE);
-    }
-
-	setup_file_limits();
+    setup_file_limits();
     // Code Added
     pid_t tid[200];
     int this_index = 0;
@@ -707,6 +702,12 @@ int main(int argc, char *argv[])
             goto END;
         }
         mode_t oldmask = umask(0);
+
+        /* create run directory */
+        if (mkdir(SAM_RUN_DIR, 01777) < 0 && errno != EEXIST) {
+            fprintf(stderr, "Failed to create %s: %s\n", SAM_RUN_DIR, strerror(errno));
+            exit(EXIT_FAILURE);
+        }
 
         /* create cgroup */
         char *mems_string = NULL;
