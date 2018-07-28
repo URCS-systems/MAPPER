@@ -8,12 +8,16 @@ enum metric {
     METRIC_INTRA,
     METRIC_INTER,
     N_METRICS,
-    /*
-     * These other metrics aren't used for sorting.
-     */
-    METRIC_REMOTE,
-    METRIC_IpCOREpS,
-    METRIC_IPS,
+};
+
+/*
+ * These other metrics aren't used for sorting.
+ */
+enum extra_metric {
+    EXTRA_METRIC_REMOTE,
+    EXTRA_METRIC_IpCOREpS,
+    EXTRA_METRIC_IPS,
+    N_EXTRA_METRICS,
 };
 
 #endif

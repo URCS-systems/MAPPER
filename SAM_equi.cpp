@@ -86,24 +86,11 @@ struct perf_data {
     struct perf_counter ctr[MAX_COUNTERS];
 };
 
-int thresh_pt[MAX_COUNTERS], limits_soc[MAX_COUNTERS], thresh_soc[MAX_COUNTERS];
+int thresh_pt[N_METRICS];
 int counter_order[MAX_COUNTERS];
 int ordernum = 0;
 int init_thresholds = 0;
 int appIDmap[MAX_APPS];
-struct PerApp {
-    pid_t pid;
-    unsigned long value[MAX_COUNTERS];
-    double valshare[MAX_COUNTERS];
-    int bottleneck[MAX_COUNTERS];
-    int maxCPUS[MAX_COUNTERS];
-    unsigned long metric[MAX_COUNTERS];
-    int num_threads = 0;
-    int active_threads = 0;
-};
-struct PerApp apps[MAX_APPS];
-struct PerApp sockets[TOT_SOCKETS];
-struct PerApp systemlvl;
 
 struct countervalues {
     double ratio;
@@ -137,6 +124,7 @@ const char *metric_names[N_METRICS] = {
 struct appinfo {
     pid_t pid; /* application PID */
     uint64_t metric[N_METRICS];
+    uint64_t extra_metric[N_EXTRA_METRICS];
     uint64_t bottleneck[N_METRICS];
     uint64_t value[MAX_COUNTERS];
     uint64_t refcount;
@@ -180,79 +168,6 @@ struct appinfo **apps_array;
 struct appinfo *apps_list;
 int num_apps = 0;
 
-void resetApps()
-{
-    for (int i = 0; i < MAX_APPS; i++) {
-        for (int j = 0; j < MAX_COUNTERS; j++) {
-            apps[i].value[j] = 0;
-            apps[i].valshare[j] = 0;
-            apps[i].bottleneck[j] = 0;
-            apps[i].maxCPUS[j] = 0;
-            apps[i].metric[j] = 0;
-            apps[i].active_threads = 0;
-            apps[i].num_threads = 0;
-        }
-    }
-    return;
-}
-
-void deriveAppStatistics(int num)
-{
-    int i = 0;
-    for (int appiter = 0; appiter < num; appiter++) {
-        i = 0;
-        apps[appiter].metric[0] = apps[appiter].value[0];
-        i = 1; // Avg IPC
-        apps[appiter].metric[i] = (apps[appiter].value[1] * 1000) / (1 + apps[appiter].value[0]);
-        i = 2; // Mem
-        apps[appiter].metric[i] = apps[appiter].value[8];
-        i = 3; // snp
-        apps[appiter].metric[i] =
-            apps[appiter].value[7] - (apps[appiter].value[5] + apps[appiter].value[6]);
-        i = 4;
-        apps[appiter].metric[i] = apps[appiter].value[9];
-        apps[appiter].pid = appIDmap[appiter];
-    }
-
-    for (struct appinfo *an = apps_list; an; an = an->next) {
-        /*an->metric[METRIC_ACTIVE] = an->value[0];
-          an->metric[METRIC_AVGIPC] = (an->value[1] * 1000) / (1 + an->value[0]);
-          an->metric[METRIC_MEM] = an->value[8];
-          an->metric[METRIC_INTRA] = an->value[7] - (an->value[5] + an->value[6]);
-          an->metric[METRIC_INTER] = an->value[9];*/
-
-        an->metric[METRIC_ACTIVE] = apps[an->appnoref].metric[METRIC_ACTIVE];
-        an->metric[METRIC_AVGIPC] = apps[an->appnoref].metric[METRIC_AVGIPC];
-        an->metric[METRIC_MEM] = apps[an->appnoref].metric[METRIC_MEM];
-        an->metric[METRIC_INTRA] = apps[an->appnoref].metric[METRIC_INTRA];
-        an->metric[METRIC_INTER] = apps[an->appnoref].metric[METRIC_INTER];
-        apps[an->appnoref].metric[METRIC_IpCOREpS] = 
-            (apps[an->appnoref].value[1]/CPU_COUNT_S(CPU_ALLOC_SIZE(cpuinfo->total_cpus),an->cpuset[0]));
-        an->metric[METRIC_IpCOREpS] = apps[an->appnoref].metric[METRIC_IpCOREpS]; 
-
-        if (!(an->ts.tv_sec == 0 && an->ts.tv_nsec == 0)) {
-            struct timespec diff_ts;
-            clock_gettime(CLOCK_MONOTONIC_RAW, &diff_ts);
-
-            if (diff_ts.tv_nsec < an->ts.tv_nsec) {
-                diff_ts.tv_sec = diff_ts.tv_sec - an->ts.tv_sec - 1;
-                diff_ts.tv_nsec = 1000000000 - (an->ts.tv_nsec - diff_ts.tv_nsec);
-            } else {
-                diff_ts.tv_sec -= an->ts.tv_sec;
-                diff_ts.tv_nsec -= an->ts.tv_nsec;
-            }
-
-            /*
-             * Compute instructions / second
-             */
-            an->metric[METRIC_IPS] = an->value[EVENT_INSTRUCTIONS] 
-                / (diff_ts.tv_sec + (double) diff_ts.tv_nsec / 1000000000);
-        } else
-            clock_gettime(CLOCK_MONOTONIC_RAW, &an->ts);
-    }
-    return;
-}
-
 /*
  * Reverse comparison. Produces a sorted list from largest to smallest element.
  */
@@ -263,6 +178,18 @@ static int compare_apps_by_metric_desc(const void *a_ptr, const void *b_ptr, voi
     int met = *(int *)arg;
 
     return (int)((long)b->metric[met] - (long)a->metric[met]);
+}
+
+/*
+ * Reverse comparison. Produces a sorted list from largest to smallest element.
+ */
+static int compare_apps_by_extra_metric_desc(const void *a_ptr, const void *b_ptr, void *arg)
+{
+    const struct appinfo *a = *(struct appinfo *const *)a_ptr;
+    const struct appinfo *b = *(struct appinfo *const *)b_ptr;
+    int met = *(int *)arg;
+
+    return (int)((long)b->extra_metric[met] - (long)a->extra_metric[met]);
 }
 
 void sigterm_handler(int sig) { stoprun = true; }
@@ -286,9 +213,9 @@ static void manage(pid_t pid, pid_t app_pid, int appno_in)
         apps_list = anode;
         apps_array[app_pid] = anode;
         num_apps++;
+        printf("Managing new application %d\n", app_pid);
     } else
         apps_array[app_pid]->refcount++;
-    std::cout << "Manage (" << pid << ", " << app_pid << ", " << appno_in << ") done \n";
 }
 
 static void unmanage(pid_t pid, pid_t app_pid)
@@ -313,7 +240,10 @@ static void unmanage(pid_t pid, pid_t app_pid)
             next->prev = anode->prev;
         }
 
-        if (anode == apps_list) apps_list = anode->next;
+        if (anode == apps_list) 
+            apps_list = anode->next;
+
+        printf("Unmanaged application %d\n", app_pid);
 
         CPU_FREE(anode->cpuset[0]);
         CPU_FREE(anode->cpuset[1]);
@@ -402,10 +332,9 @@ class PerfData
     int memfd;     // file descriptor, from shm_open()
     char *membase; // base address, from mmap()
     int touch;
-    int pid;
-    int apppid;
+    pid_t app_pid;
+    pid_t pid;
     size_t memsize;
-    int appid;
     int bottleneck[MAX_COUNTERS];
     int active;
     double val[MAX_COUNTERS];
@@ -419,11 +348,10 @@ void PerfData::initialize(int tid, int app_tid, int appno_in)
     memsize = sizeof(struct options_t);
     // In the spirit of the prev shared memory map. 
     membase = (char*) malloc(sizeof (struct options_t));
-    appid = 0;
     // system(commandstring.c_str());
     options = (struct options_t *)membase;
     options->countercount = 10;
-    apppid = app_tid;
+    app_pid = app_tid;
     manage(tid, app_tid, appno_in);
     std::cout << "Done with manage \n";
     init = 1;
@@ -444,17 +372,15 @@ void PerfData::printCounters(int index)
 
     if (PRINT_COUNT) // set to false in Macro to disable
     {
-        printf("==============PrintCounters========\n");
-        printf(" TID:%d\n", THREADS.tid[index]);
-        printf("UNHALTED CYCLES: %'" PRIu64 "\n",
-               options->counters[0].delta);                            // UNHALTED_CYCLES
-        printf("INSTRUCTIONS: %'" PRIu64 "\n", options->counters[1].delta);    // INSTR ;
-        printf("L3 MISSES: %'" PRIu64 "\n", options->counters[5].delta);       // L3_MISSES
-        printf("L3 HITS: %'" PRIu64 "\n", options->counters[6].delta);         // L3_HIT
-        printf("L2 MISSES: %'" PRIu64 "\n", options->counters[7].delta);       // L2_MISSES
-        printf("LLC MISSES: %'" PRIu64 "\n", options->counters[8].delta);      // LLC_MISSES
-        printf("REMOTE_HITM: %'" PRIu64 "\n", options->counters[9].delta);     // REMOTE_HITM
-        /*printf("REMOTE DRAM: %" PRIu64 "\n", options->counters[2].delta);*/ // REMOTE_DRAM
+        printf("TID:\t\t%5d\n", THREADS.tid[index]);
+        printf("UNHALTED CYCLES:\t%'" PRIu64 "\n", options->counters[0].delta); // UNHALTED_CYCLES
+        printf("INSTRUCTIONS:\t%'20" PRIu64 "\n", options->counters[1].delta);  // INSTR ;
+        printf("L3 MISSES:\t%'20" PRIu64 "\n", options->counters[5].delta);     // L3_MISSES
+        printf("L3 HITS:\t%'20" PRIu64 "\n", options->counters[6].delta);       // L3_HIT
+        printf("L2 MISSES:\t%'20" PRIu64 "\n", options->counters[7].delta);       // L2_MISSES
+        printf("LLC MISSES:\t%'20" PRIu64 "\n", options->counters[8].delta);      // LLC_MISSES
+        printf("REMOTE_HITM:\t%'20" PRIu64 "\n", options->counters[9].delta);     // REMOTE_HITM
+        /*printf("REMOTE DRAM: %'20" PRIu64 "\n", options->counters[2].delta);*/ // REMOTE_DRAM
     }
 
     //
@@ -471,9 +397,8 @@ void PerfData::printCounters(int index)
                     (1.0 - options->counters[i].ratio) * 100.0, options->counters[i].auxval1,
                     options->counters[i].auxval2);
         bottleneck[i] = 0;
-        apps[appid].value[i] += options->counters[i].delta;
-        if (apps_array[apppid]) 
-            apps_array[apppid]->value[i] += apps[appid].value[i];
+        if (apps_array[app_pid]) 
+            apps_array[app_pid]->value[i] += options->counters[i].delta;
     }
 
     i = 0;
@@ -481,8 +406,7 @@ void PerfData::printCounters(int index)
         active = 1;
         val[i] = options->counters[i].delta;
         bottleneck[i] = 1;
-        if (apps_array[apppid]) apps_array[apppid]->bottleneck[i] += 1;
-        apps[appid].bottleneck[i] += 1;
+        if (apps_array[app_pid]) apps_array[app_pid]->bottleneck[i] += 1;
     }
 
     i = 1;
@@ -490,8 +414,8 @@ void PerfData::printCounters(int index)
         (uint64_t)thresh_pt[i]) {
         val[i] = (1000 * options->counters[1].delta) / (options->counters[0].delta + 1);
         bottleneck[i] = 1;
-        apps[appid].bottleneck[i] += 1;
-        if (apps_array[apppid]) apps_array[apppid]->bottleneck[i] += 1;
+        if (apps_array[app_pid]) 
+            apps_array[app_pid]->bottleneck[i] += 1;
         std::cout << " Detected counter " << i << '\n';
     }
 
@@ -500,8 +424,8 @@ void PerfData::printCounters(int index)
     if (tempvar > thresh_pt[i]) {
         val[i] = tempvar;
         bottleneck[i] = 1;
-        apps[appid].bottleneck[i] += 1;
-        if (apps_array[apppid]) apps_array[apppid]->bottleneck[i] += 1;
+        if (apps_array[app_pid]) 
+            apps_array[app_pid]->bottleneck[i] += 1;
         std::cout << " Detected counter " << i << '\n';
     }
 
@@ -512,8 +436,8 @@ void PerfData::printCounters(int index)
     if (tempvar > thresh_pt[i]) {
         val[i] = tempvar;
         bottleneck[i] = 1;
-        apps[appid].bottleneck[i] += 1;
-        if (apps_array[apppid]) apps_array[apppid]->bottleneck[i] += 1;
+        if (apps_array[app_pid]) 
+            apps_array[app_pid]->bottleneck[i] += 1;
         std::cout << " Detected counter " << i << '\n';
     }
 
@@ -522,15 +446,15 @@ void PerfData::printCounters(int index)
     if (tempvar > thresh_pt[i]) {
         val[i] = tempvar;
         bottleneck[i] = 1;
-        apps[appid].bottleneck[i] += 1;
-        if (apps_array[apppid]) apps_array[apppid]->bottleneck[i] += 1;
+        if (apps_array[app_pid]) 
+            apps_array[app_pid]->bottleneck[i] += 1;
         std::cout << " Detected counter " << i << '\n';
     }
     std::cout << "Updated the app arrays too \n";
 }
 void PerfData::readCounters(int index)
 {
-    printf("\nreadCounters PID:: %d App ID %d \n", pid, appid);
+    printf("[APP %5d | TID %5d] readCounters():\n", app_pid, pid);
     if (pid == 0) // options->pid
     {
         return;
@@ -544,34 +468,14 @@ void PerfData::readCounters(int index)
     else
         printf(" Process exists so just continuing \n");
 
-    //  printf("ReadCounter printCounters\n");
     printCounters(index);
     return;
 }
 
 PerfData::~PerfData()
 {
-    /* 
-    //remove the mapped shared memory segment 
-    //from the address space of the process 
-    if (munmap(membase, memsize) == -1) {
-        printf("PID %d Unmap failed: %s\n", pid, strerror(errno));
-        exit(1);
-    }
-
-    if (close(memfd) == -1) {
-        printf("TID %d Close failed: %s\n", pid, strerror(errno));
-        exit(1);
-    }
-    */
-    unmanage(pid, apppid);
-	free(membase);
-    std::cout << " Done with unmanage for " << pid << " of application PID " << apppid << '\n';
-    /* remove the shared memory segment from the file system
-    if (shm_unlink(memname) == -1) {
-        printf("TID %s Error removing %s\n", memname, strerror(errno));
-        exit(1);
-    } */
+    unmanage(pid, app_pid);
+    free(membase);
 }
 
 void setup_file_limits()
@@ -636,7 +540,7 @@ int main(int argc, char *argv[])
         thresh_pt[METRIC_MEM] = SHAR_MEM_THRESH / SHAR_PROCESSORS_CORE; // Mem
         thresh_pt[METRIC_INTRA] = SHAR_COHERENCE_THRESH;
         thresh_pt[METRIC_INTER] = SHAR_COHERENCE_THRESH;
-        thresh_pt[METRIC_REMOTE] = SHAR_REMOTE_THRESH;
+        // thresh_pt[METRIC_REMOTE] = SHAR_REMOTE_THRESH;
 
         ordernum = 0;
         counter_order[ordernum++] = METRIC_INTER; // LLC_MISSES
@@ -710,9 +614,7 @@ int main(int argc, char *argv[])
     }
     if (init_error == -1) goto END;
 RESUME:
-    appno = 1;
     files.clear();
-    resetApps();
     dr = opendir(SAM_RUN_DIR);
 
     if (dr == NULL) {
@@ -764,9 +666,8 @@ RESUME:
         if (perfiter == perfdata.end()) {
             std::cout << pid << " is not found in perfdata. Adding it under " << i->second << "\n";
 
-            PerfData *perfcreate = new PerfData;
+            PerfData *perfcreate = new PerfData();
             perfcreate->initialize(pid, appIDmap[((i->second) - 1)], i->second - 1);
-            perfcreate->appid = i->second - 1;
             perfdata.insert(std::pair<int, PerfData *>(pid, perfcreate));
             perfiter = perfdata.find(pid);
             perfcreate = NULL;
@@ -774,8 +675,6 @@ RESUME:
         PerfData *temp;
 
         temp = perfiter->second;
-        temp->appid = i->second - 1;
-        std::cout << "PID: " << pid << "App ID: " << temp->appid << '\n';
 
         if (my_index != -1) temp->readCounters(my_index);
 
@@ -808,7 +707,36 @@ RESUME:
         }
     }
     closedir(dr);
-    deriveAppStatistics(appno - 1);
+
+    /* derive app statistics */
+    for (struct appinfo *an = apps_list; an; an = an->next) {
+        an->metric[METRIC_ACTIVE] = an->value[0];
+        an->metric[METRIC_AVGIPC] = (an->value[1] * 1000) / (1 + an->value[0]);
+        an->metric[METRIC_MEM] = an->value[8];
+        an->metric[METRIC_INTRA] = an->value[7] - (an->value[5] + an->value[6]);
+        an->metric[METRIC_INTER] = an->value[9];
+        an->extra_metric[EXTRA_METRIC_IpCOREpS] = an->value[1] / CPU_COUNT_S(CPU_ALLOC_SIZE(cpuinfo->total_cpus), an->cpuset[0]);
+
+        if (!(an->ts.tv_sec == 0 && an->ts.tv_nsec == 0)) {
+            struct timespec diff_ts;
+            clock_gettime(CLOCK_MONOTONIC_RAW, &diff_ts);
+
+            if (diff_ts.tv_nsec < an->ts.tv_nsec) {
+                diff_ts.tv_sec = diff_ts.tv_sec - an->ts.tv_sec - 1;
+                diff_ts.tv_nsec = 1000000000 - (an->ts.tv_nsec - diff_ts.tv_nsec);
+            } else {
+                diff_ts.tv_sec -= an->ts.tv_sec;
+                diff_ts.tv_nsec -= an->ts.tv_nsec;
+            }
+
+            /*
+             * Compute instructions / second
+             */
+            an->extra_metric[EXTRA_METRIC_IPS] = an->value[EVENT_INSTRUCTIONS] 
+                / (diff_ts.tv_sec + (double) diff_ts.tv_nsec / 1000000000);
+        } else
+            clock_gettime(CLOCK_MONOTONIC_RAW, &an->ts);
+    }
 
     /* map applications */
     remaining_cpus = CPU_ALLOC(cpuinfo->total_cpus);
@@ -885,7 +813,7 @@ RESUME:
                     uint64_t history[2];
                     memcpy(history, apps_sorted[j]->perf_history[curr_alloc_len], sizeof history);
                     history[1]++;
-                    history[0] = apps_sorted[j]->metric[METRIC_IPS] * (1/(double)history[1]) + 
+                    history[0] = apps_sorted[j]->extra_metric[EXTRA_METRIC_IPS] * (1/(double)history[1]) + 
                         history[0] * ((history[1] - 1)/(double)history[1]);
                     memcpy(apps_sorted[j]->perf_history[curr_alloc_len], history, sizeof apps_sorted[j]->perf_history[curr_alloc_len]);
 
@@ -1015,9 +943,9 @@ RESUME:
                     /*
                      * Sort by efficiency.
                      */
-                    int met = METRIC_IpCOREpS;
+                    int met = EXTRA_METRIC_IpCOREpS;
                     qsort_r(candidates, num_candidates, sizeof *candidates,
-                            &compare_apps_by_metric_desc, (void *) &met);
+                            &compare_apps_by_extra_metric_desc, (void *) &met);
 
                     /*
                      * Start by taking away contexts from the least efficient applications.
@@ -1116,6 +1044,7 @@ RESUME:
     /* reset app metrics and values */
     for (struct appinfo *an = apps_list; an; an = an->next) {
         memset(an->metric, 0, sizeof an->metric);
+        memset(an->extra_metric, 0, sizeof an->extra_metric);
         memset(an->bottleneck, 0, sizeof an->bottleneck);
         memset(an->value, 0, sizeof an->value);
     }
