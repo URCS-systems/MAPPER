@@ -124,6 +124,17 @@ const char *metric_names[N_METRICS] = {
     [METRIC_INTER]      = "Inter-socket communication",
 };
 
+const char *event_names[EVENTS] = {
+    [EVENT_UNHALTED_CYCLES]     = "cycles (unhalted)",
+    [EVENT_INSTRUCTIONS]        = "instructions",
+    [EVENT_REMOTE_HITM]         = "remote-hitm",
+    [EVENT_REMOTE_DRAM]         = "remote-dram",
+    [EVENT_LLC_MISSES]          = "LLC misses",
+    [EVENT_L2_MISSES]           = "L2 misses",
+    [EVENT_L3_MISSES]           = "L3 misses",
+    [EVENT_L3_HIT]              = "L3 hit"
+};
+
 struct appinfo {
     pid_t pid; /* application PID */
     uint64_t metric[N_METRICS];
@@ -382,21 +393,34 @@ void PerfData::printCounters(int index)
     options->counters[8].delta = THREADS.event[index][4]; // LLC_MISSES
     options->counters[9].delta = THREADS.event[index][2]; // REMOTE_HITM
     //	                           THREADS.event[index][3]; //REMOTE DRAM
+    
+
+    const int map_counter_to_event[MAX_COUNTERS] = {
+        [0] = 0,
+        [1] = 1,
+        [2] = -1,
+        [3] = -1,
+        [4] = -1,
+        [5] = 6,
+        [6] = 7,
+        [7] = 5,
+        [8] = 4,
+        [9] = 2
+    };
 
     if (PRINT_COUNT) // set to false in Macro to disable
     {
-        printf("TID:\t\t%5d\n", THREADS.tid[index]);
-        printf("UNHALTED CYCLES:\t%'" PRIu64 "\n", options->counters[0].delta); // UNHALTED_CYCLES
-        printf("INSTRUCTIONS:\t%'20" PRIu64 "\n", options->counters[1].delta);  // INSTR ;
-        printf("L3 MISSES:\t%'20" PRIu64 "\n", options->counters[5].delta);     // L3_MISSES
-        printf("L3 HITS:\t%'20" PRIu64 "\n", options->counters[6].delta);       // L3_HIT
-        printf("L2 MISSES:\t%'20" PRIu64 "\n", options->counters[7].delta);       // L2_MISSES
-        printf("LLC MISSES:\t%'20" PRIu64 "\n", options->counters[8].delta);      // LLC_MISSES
-        printf("REMOTE_HITM:\t%'20" PRIu64 "\n", options->counters[9].delta);     // REMOTE_HITM
-        /*printf("REMOTE DRAM: %'20" PRIu64 "\n", options->counters[2].delta);*/ // REMOTE_DRAM
+        printf("%20s: %20d\n", "TID", THREADS.tid[index]);
+        /*
+        printf("UNHALTED CYCLES:%'" PRIu64 "\n", options->counters[0].delta);     // UNHALTED_CYCLES
+        printf("INSTRUCTIONS:%'20" PRIu64 "\n", options->counters[1].delta);      // INSTR ;
+        printf("L3 MISSES:%'20" PRIu64 "\n", options->counters[5].delta);         // L3_MISSES
+        printf("L3 HITS:%'20" PRIu64 "\n", options->counters[6].delta);           // L3_HIT
+        printf("L2 MISSES:%'20" PRIu64 "\n", options->counters[7].delta);         // L2_MISSES
+        printf("LLC MISSES:%'20" PRIu64 "\n", options->counters[8].delta);        // LLC_MISSES
+        printf("REMOTE_HITM:%'20" PRIu64 "\n", options->counters[9].delta);       // REMOTE_HITM
+        printf("REMOTE DRAM:%'20" PRIu64 "\n", options->counters[2].delta);*/      // REMOTE_DRAM
     }
-
-    //
 
     int i;
     int num = options->countercount;
@@ -404,8 +428,8 @@ void PerfData::printCounters(int index)
 
     for (i = 0; i < num; i++) {
         if (PRINT_COUNT) 
-            printf("%'20" PRIu64 " %'20" PRIu64 " %s (%.2f%% scaling, ena=%'" PRIu64 ", run=%'" PRIu64
-                    ")\n",
+            printf("%20s: %'20" PRIu64 " %'20" PRIu64 " %s (%.2f%% scaling, ena=%'" PRIu64 ", run=%'" PRIu64 ")\n",
+                    map_counter_to_event[i] == -1 ? "??" : event_names[map_counter_to_event[i]],
                     options->counters[i].val, options->counters[i].delta, options->counters[i].name,
                     (1.0 - options->counters[i].ratio) * 100.0, options->counters[i].auxval1,
                     options->counters[i].auxval2);
