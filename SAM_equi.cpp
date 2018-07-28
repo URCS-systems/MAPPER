@@ -65,7 +65,7 @@ using std::vector;
 #define SHAR_PHY_CORE           10
 #define SAM_MIN_CONTEXTS        1
 #define SAM_MIN_QOS             0.85
-#define SAM_PERF_THRESH         1.05
+#define SAM_PERF_THRESH         0.05    /* in fraction of previous performance */
 #define SAM_PERF_STEP           2       /* in number of CPUs */
 
 #define PRINT_COUNT true
@@ -851,6 +851,7 @@ RESUME:
         int **per_app_cpu_orders = (int **) calloc(num_apps, sizeof *per_app_cpu_orders);
         cpu_set_t **new_cpusets = (cpu_set_t **) calloc(num_apps, sizeof *new_cpusets);
         int *needs_more = (int *) calloc(num_apps, sizeof *needs_more);
+        int initial_remaining_cpus = cpuinfo->total_cpus;
         char cg_name[256];
         char buf[256];
 
@@ -920,7 +921,8 @@ RESUME:
                     uint64_t curr_perf = apps_sorted[j]->perf_history[curr_alloc_len][0];
 
                     /*
-                     * Compare current performance with previous performance.
+                     * Compare current performance with previous performance, if this application
+                     * has at least two items in history.
                      */
                     if (apps_sorted[j]->times_allocated > 1) {
                         const int prev_alloc_len = CPU_COUNT_S(rem_cpus_sz, apps_sorted[j]->cpuset[1]);
@@ -930,7 +932,7 @@ RESUME:
                          * Increase requested resources.
                          */
                         if (curr_perf > prev_perf 
-                            && curr_perf / (double) prev_perf >= SAM_PERF_THRESH) {
+                            && (curr_perf - prev_perf) / (double) prev_perf >= SAM_PERF_THRESH) {
                             per_app_cpu_budget[j] += SAM_PERF_STEP;
                         }
                     }
@@ -948,6 +950,10 @@ RESUME:
                      */
                     per_app_cpu_budget[j] = fair_share;
                 }
+
+                int diff = initial_remaining_cpus - per_app_cpu_budget[j];
+                needs_more[j] = MAX(-diff, 0);
+                initial_remaining_cpus = MAX(diff, 0);
             }
         }
 
