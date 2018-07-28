@@ -335,7 +335,7 @@ static void unmanage(pid_t pid, pid_t app_pid)
 }
 
 /**
- * @app_pid = an app to traverse its tree or 0 to remove all children
+ * @app_pid = an app to traverse its tree
  */
 void update_children(pid_t app_pid) {
     pid_t frontier[8192];
