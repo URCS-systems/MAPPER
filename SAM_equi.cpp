@@ -1018,6 +1018,8 @@ RESUME:
                     int num_candidates = 0;
                     int *spare_cores = new int[num_apps]();
 
+                    printf("Application %d needs %d more hardware contexts.\n", j, needs_more[j]);
+
                     /*
                      * Find the least efficient application to steal CPUs from.
                      */
