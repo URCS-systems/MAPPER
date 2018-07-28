@@ -915,6 +915,7 @@ int main(int argc, char *argv[])
                             initial_remaining_cpus);
                     needs_more[j] = MAX(-diff, 0);
                     initial_remaining_cpus = MAX(diff, 0);
+                    per_app_cpu_budget[j] -= needs_more[j];
                 }
             }
 
@@ -970,7 +971,7 @@ int main(int argc, char *argv[])
                         int *spare_candidates_map = new int[num_apps]();
                         int num_spare_candidates = 0;
 
-                        printf("Application %d needs %d more hardware contexts.\n", j, needs_more[j]);
+                        printf("[APP %5d] needs %d more hardware contexts\n", apps_sorted[j]->pid, needs_more[j]);
 
                         /*
                          * Find the least efficient application to steal CPUs from.
@@ -1022,7 +1023,8 @@ int main(int argc, char *argv[])
                             for (int l = num_spare_candidates - 1; l > 0 && needs_more[j] > 0; --l) {
                                 int m = spare_candidates_map[spare_candidates[l]->appno];
 
-                                for (int n = 0; n < spare_cores[m]; ++n) {
+                                for (int n = 0; n < spare_cores[m] 
+                                        && per_app_cpu_budget[m] > SAM_MIN_CONTEXTS; ++n) {
                                     int cpu = per_app_cpu_orders[m][per_app_cpu_budget[m] - 1];
 
                                     CPU_CLR_S(cpu, rem_cpus_sz, new_cpusets[m]);
@@ -1039,7 +1041,8 @@ int main(int argc, char *argv[])
                             for (int l = num_candidates - 1; l > 0 && needs_more[j] > 0; --l) {
                                 int m = candidates_map[candidates[l]->appno];
 
-                                for (int n = 0; n < spare_cores[m]; ++n) {
+                                for (int n = 0; n < spare_cores[m]
+                                        && per_app_cpu_budget[m] > SAM_MIN_CONTEXTS; ++n) {
                                     int cpu = per_app_cpu_orders[m][per_app_cpu_budget[m] - 1];
 
                                     CPU_CLR_S(cpu, rem_cpus_sz, new_cpusets[m]);
