@@ -1002,51 +1002,52 @@ int main(int argc, char *argv[])
                         }
 
                         /*
-                         * It's impossible for us to have less than the fair share available
+                         * It's unlikely for us to have less than the fair share available
                          * without there being at least one other application.
+                         * The one case is when the other applications are new.
                          */
-                        assert(num_candidates + num_spare_candidates > 0);
+                        if (num_candidates + num_spare_candidates > 0) {
+                            /*
+                             * Sort by efficiency.
+                             */
+                            int met = EXTRA_METRIC_IpCOREpS;
+                            qsort_r(candidates, num_candidates, sizeof *candidates,
+                                    &compare_apps_by_extra_metric_desc, (void *) &met);
+                            qsort_r(spare_candidates, num_spare_candidates, sizeof *spare_candidates,
+                                    &compare_apps_by_extra_metric_desc, (void *) &met);
 
-                        /*
-                         * Sort by efficiency.
-                         */
-                        int met = EXTRA_METRIC_IpCOREpS;
-                        qsort_r(candidates, num_candidates, sizeof *candidates,
-                                &compare_apps_by_extra_metric_desc, (void *) &met);
-                        qsort_r(spare_candidates, num_spare_candidates, sizeof *spare_candidates,
-                                &compare_apps_by_extra_metric_desc, (void *) &met);
+                            /*
+                             * Start by taking away contexts from the least efficient applications.
+                             */
+                            for (int l = num_spare_candidates - 1; l > 0 && needs_more[j] > 0; --l) {
+                                int m = spare_candidates_map[spare_candidates[l]->appno];
 
-                        /*
-                         * Start by taking away contexts from the least efficient applications.
-                         */
-                        for (int l = num_spare_candidates - 1; l > 0 && needs_more[j] > 0; --l) {
-                            int m = spare_candidates_map[spare_candidates[l]->appno];
+                                for (int n = 0; n < spare_cores[m]; ++n) {
+                                    int cpu = per_app_cpu_orders[m][per_app_cpu_budget[m] - 1];
 
-                            for (int n = 0; n < spare_cores[m]; ++n) {
-                                int cpu = per_app_cpu_orders[m][per_app_cpu_budget[m] - 1];
-
-                                CPU_CLR_S(cpu, rem_cpus_sz, new_cpusets[m]);
-                                CPU_SET_S(cpu, rem_cpus_sz, new_cpusets[j]);
-                                per_app_cpu_budget[m]--;
-                                per_app_cpu_budget[j]++;
-                                needs_more[j]--;
+                                    CPU_CLR_S(cpu, rem_cpus_sz, new_cpusets[m]);
+                                    CPU_SET_S(cpu, rem_cpus_sz, new_cpusets[j]);
+                                    per_app_cpu_budget[m]--;
+                                    per_app_cpu_budget[j]++;
+                                    needs_more[j]--;
+                                }
                             }
-                        }
 
-                        /* 
-                         * If there were no candidates with spares, take from other applications.
-                         */
-                        for (int l = num_candidates - 1; l > 0 && needs_more[j] > 0; --l) {
-                            int m = candidates_map[candidates[l]->appno];
+                            /* 
+                             * If there were no candidates with spares, take from other applications.
+                             */
+                            for (int l = num_candidates - 1; l > 0 && needs_more[j] > 0; --l) {
+                                int m = candidates_map[candidates[l]->appno];
 
-                            for (int n = 0; n < spare_cores[m]; ++n) {
-                                int cpu = per_app_cpu_orders[m][per_app_cpu_budget[m] - 1];
+                                for (int n = 0; n < spare_cores[m]; ++n) {
+                                    int cpu = per_app_cpu_orders[m][per_app_cpu_budget[m] - 1];
 
-                                CPU_CLR_S(cpu, rem_cpus_sz, new_cpusets[m]);
-                                CPU_SET_S(cpu, rem_cpus_sz, new_cpusets[j]);
-                                per_app_cpu_budget[m]--;
-                                per_app_cpu_budget[j]++;
-                                needs_more[j]--;
+                                    CPU_CLR_S(cpu, rem_cpus_sz, new_cpusets[m]);
+                                    CPU_SET_S(cpu, rem_cpus_sz, new_cpusets[j]);
+                                    per_app_cpu_budget[m]--;
+                                    per_app_cpu_budget[j]++;
+                                    needs_more[j]--;
+                                }
                             }
                         }
 
