@@ -908,49 +908,16 @@ int main(int argc, char *argv[])
                         per_app_cpu_budget[j] = fair_share;
                     }
 
-                    int diff = initial_remaining_cpus - per_app_cpu_budget[j];
+
                     printf("[APP %d] Requiring %d / %d remaining CPUs\n", 
                             apps_sorted[j]->pid,
                             per_app_cpu_budget[j],
                             initial_remaining_cpus);
+                    per_app_cpu_budget[j] = MIN(per_app_cpu_budget[j], cpuinfo->total_cpus);
+                    int diff = initial_remaining_cpus - per_app_cpu_budget[j];
                     needs_more[j] = MAX(-diff, 0);
                     initial_remaining_cpus = MAX(diff, 0);
                     per_app_cpu_budget[j] -= needs_more[j];
-                }
-            }
-
-            /*
-             * Compute the budgets.
-             */
-            for (int i = 0; i < N_METRICS; ++i) {
-                for (int j = range_ends[i]; j < range_ends[i + 1]; ++j) {
-                    cpu_set_t *new_cpuset;
-
-                    new_cpuset = CPU_ALLOC(cpuinfo->total_cpus);
-                    CPU_ZERO_S(rem_cpus_sz, new_cpuset);
-
-
-                    if (i < num_counter_orders) {
-                        int met = counter_order[i];
-
-                        /*
-                         * compute the CPU budget for this application, given its bottleneck
-                         * [met]
-                         */
-                        (*budgeter_functions[met])(apps_sorted[j]->cpuset[0], new_cpuset, 
-                                per_app_cpu_orders[j],
-                                remaining_cpus, rem_cpus_sz, per_app_cpu_budget[j]);
-                    } else {
-                        budget_default(apps_sorted[j]->cpuset[0], new_cpuset, 
-                                per_app_cpu_orders[j],
-                                remaining_cpus, rem_cpus_sz, per_app_cpu_budget[j]);
-                    }
-
-                    /* subtract allocated cpus from remaining cpus,
-                     * [new_cpuset] is already a subset of [remaining_cpus] */
-                    CPU_XOR_S(rem_cpus_sz, remaining_cpus, remaining_cpus, new_cpuset);
-                    per_app_cpu_budget[j] = CPU_COUNT_S(rem_cpus_sz, new_cpuset);
-                    new_cpusets[j] = new_cpuset;
                 }
             }
 
@@ -971,7 +938,7 @@ int main(int argc, char *argv[])
                         int *spare_candidates_map = new int[num_apps]();
                         int num_spare_candidates = 0;
 
-                        printf("[APP %5d] needs %d more hardware contexts\n", apps_sorted[j]->pid, needs_more[j]);
+                        printf("[APP %5d] requests %d more hardware contexts\n", apps_sorted[j]->pid, needs_more[j]);
 
                         /*
                          * Find the least efficient application to steal CPUs from.
@@ -980,7 +947,7 @@ int main(int argc, char *argv[])
                             if (l == j)
                                 continue;
 
-                            int curr_alloc_len_l = CPU_COUNT_S(rem_cpus_sz, new_cpusets[l]);
+                            int curr_alloc_len_l = CPU_COUNT_S(rem_cpus_sz, apps_sorted[l]->cpuset[0]);
                             uint64_t curr_perf = apps_sorted[l]->perf_history[curr_alloc_len_l][0];
                             uint64_t best_perf = apps_sorted[l]->perf_history[apps_sorted[l]->curr_fair_share][0];
 
@@ -1022,17 +989,20 @@ int main(int argc, char *argv[])
                              */
                             for (int l = num_spare_candidates - 1; l > 0 && needs_more[j] > 0; --l) {
                                 int m = spare_candidates_map[spare_candidates[l]->appno];
+                                int amt_taken = 0;
 
                                 for (int n = 0; n < spare_cores[m] 
-                                        && per_app_cpu_budget[m] > SAM_MIN_CONTEXTS; ++n) {
-                                    int cpu = per_app_cpu_orders[m][per_app_cpu_budget[m] - 1];
-
-                                    CPU_CLR_S(cpu, rem_cpus_sz, new_cpusets[m]);
-                                    CPU_SET_S(cpu, rem_cpus_sz, new_cpusets[j]);
+                                        && per_app_cpu_budget[m] > SAM_MIN_CONTEXTS
+                                        && needs_more[j] > 0; ++n) {
                                     per_app_cpu_budget[m]--;
                                     per_app_cpu_budget[j]++;
                                     needs_more[j]--;
+                                    amt_taken++;
                                 }
+
+                                if (amt_taken > 0)
+                                    printf("[APP %5d] took %d contexts from APP %5d\n", apps_sorted[j]->pid,
+                                            amt_taken, apps_sorted[m]->pid);
                             }
 
                             /* 
@@ -1040,17 +1010,20 @@ int main(int argc, char *argv[])
                              */
                             for (int l = num_candidates - 1; l > 0 && needs_more[j] > 0; --l) {
                                 int m = candidates_map[candidates[l]->appno];
+                                int amt_taken = 0;
 
                                 for (int n = 0; n < spare_cores[m]
-                                        && per_app_cpu_budget[m] > SAM_MIN_CONTEXTS; ++n) {
-                                    int cpu = per_app_cpu_orders[m][per_app_cpu_budget[m] - 1];
-
-                                    CPU_CLR_S(cpu, rem_cpus_sz, new_cpusets[m]);
-                                    CPU_SET_S(cpu, rem_cpus_sz, new_cpusets[j]);
+                                        && per_app_cpu_budget[m] > SAM_MIN_CONTEXTS
+                                        && needs_more[j] > 0; ++n) {
                                     per_app_cpu_budget[m]--;
                                     per_app_cpu_budget[j]++;
                                     needs_more[j]--;
+                                    amt_taken++;
                                 }
+
+                                if (amt_taken > 0)
+                                    printf("[APP %5d] took %d contexts from APP %5d\n", apps_sorted[j]->pid,
+                                            amt_taken, apps_sorted[m]->pid);
                             }
                         }
 
@@ -1062,6 +1035,42 @@ int main(int argc, char *argv[])
                     }
                 }
             }
+
+            /*
+             * Compute the budgets.
+             */
+            for (int i = 0; i < N_METRICS; ++i) {
+                for (int j = range_ends[i]; j < range_ends[i + 1]; ++j) {
+                    cpu_set_t *new_cpuset;
+
+                    new_cpuset = CPU_ALLOC(cpuinfo->total_cpus);
+                    CPU_ZERO_S(rem_cpus_sz, new_cpuset);
+
+
+                    if (i < num_counter_orders) {
+                        int met = counter_order[i];
+
+                        /*
+                         * compute the CPU budget for this application, given its bottleneck
+                         * [met]
+                         */
+                        (*budgeter_functions[met])(apps_sorted[j]->cpuset[0], new_cpuset, 
+                                per_app_cpu_orders[j],
+                                remaining_cpus, rem_cpus_sz, per_app_cpu_budget[j]);
+                    } else {
+                        budget_default(apps_sorted[j]->cpuset[0], new_cpuset, 
+                                per_app_cpu_orders[j],
+                                remaining_cpus, rem_cpus_sz, per_app_cpu_budget[j]);
+                    }
+
+                    /* subtract allocated cpus from remaining cpus,
+                     * [new_cpuset] is already a subset of [remaining_cpus] */
+                    CPU_XOR_S(rem_cpus_sz, remaining_cpus, remaining_cpus, new_cpuset);
+                    per_app_cpu_budget[j] = CPU_COUNT_S(rem_cpus_sz, new_cpuset);
+                    new_cpusets[j] = new_cpuset;
+                }
+            }
+
 
             /*
              * Iterate again. This time, apply the budgets.
