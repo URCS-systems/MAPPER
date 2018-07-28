@@ -810,7 +810,7 @@ int main(int argc, char *argv[])
                 for (int j = range_ends[i]; j < range_ends[i + 1]; ++j) {
                     const int curr_alloc_len = CPU_COUNT_S(rem_cpus_sz, apps_sorted[j]->cpuset[0]);
 
-                    per_app_cpu_budget[j] = MIN((int) apps_sorted[j]->bottleneck[METRIC_ACTIVE], fair_share);
+                    per_app_cpu_budget[j] = MAX(MIN((int) apps_sorted[j]->bottleneck[METRIC_ACTIVE], fair_share), SAM_MIN_CONTEXTS);
 
                     /*
                      * If this app has already been given an allocation, then we can compute history
