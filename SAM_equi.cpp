@@ -78,24 +78,10 @@ int random_seed = 0xFACE;
 const char *cgroot = "/sys/fs/cgroup";
 const char *cntrlr = "cpuset";
 
-struct perf_counter {
-    char name[128];
-    double ratio;
-    uint64_t vals[3];
-    uint64_t delta;
-    uint64_t seqno;
-};
-
-struct perf_data {
-    int num_counters;
-    struct perf_counter ctr[MAX_COUNTERS];
-};
-
 int thresh_pt[N_METRICS];
 int counter_order[MAX_COUNTERS];
 int ordernum = 0;
 int init_thresholds = 0;
-int appIDmap[MAX_APPS];
 
 struct countervalues {
     double ratio;
@@ -117,6 +103,29 @@ struct options_t {
     int countercount;
     int lock;
 };
+
+class PerfData
+{
+  public:
+    void initialize(int tid, int app_tid);
+    ~PerfData();
+    void readCounters(int index);  // argument added for copying
+    void printCounters(int index); // argument added for copying
+
+    int init;
+    struct options_t *options;
+    int memfd;     // file descriptor, from shm_open()
+    bool touched;
+    pid_t app_pid;
+    pid_t pid;
+    int bottleneck[MAX_COUNTERS];
+    int active;
+    double val[MAX_COUNTERS];
+    PerfData *prev, *next;
+};
+
+PerfData *pdata_list;
+PerfData **pdata_array;
 
 const char *metric_names[N_METRICS] = {
     [METRIC_ACTIVE]     = "Active",
@@ -149,7 +158,6 @@ struct appinfo {
      * cpuset[0] is the latest CPU set.
      */
     cpu_set_t *cpuset[2];
-    uint32_t appnoref;
     /**
      * This is the average performance for each CPU count.
      * The size of this array is equal to the total number of CPUs (cpuinfo->total_cpus) + 1.
@@ -176,6 +184,10 @@ struct appinfo {
      * Whether the application is currently exploring resources for better performance.
      */
     bool exploring;
+    /**
+     * This is the [appno]'th app.
+     */
+    int appno;
     struct appinfo *prev, *next;
 };
 
@@ -221,8 +233,21 @@ static int compare_apps_by_extra_metric_desc(const void *a_ptr, const void *b_pt
 void sigterm_handler(int sig) { stoprun = true; }
 void siginfo_handler(int sig) { print_counters = !print_counters; }
 
-static void manage(pid_t pid, pid_t app_pid, int appno_in)
+static void manage(pid_t pid, pid_t app_pid)
 {
+    assert(pdata_array[pid] == NULL);
+
+    /* add new perfdata */
+    PerfData *pnode = new PerfData();
+
+    pdata_array[pid] = pnode;
+    if (pdata_list)
+        pdata_list->prev = pnode;
+    pnode->next = pdata_list;
+    pdata_list = pnode;
+
+    pnode->initialize(pid, app_pid);
+
     /* add to apps list and array */
 
     if (!apps_array[app_pid]) {
@@ -230,7 +255,6 @@ static void manage(pid_t pid, pid_t app_pid, int appno_in)
 
         anode->pid = app_pid;
         anode->refcount = 1;
-        anode->appnoref = appno_in;
         anode->next = apps_list;
         anode->cpuset[0] = CPU_ALLOC(cpuinfo->total_cpus);
         anode->cpuset[1] = CPU_ALLOC(cpuinfo->total_cpus);
@@ -238,6 +262,7 @@ static void manage(pid_t pid, pid_t app_pid, int appno_in)
         if (apps_list) apps_list->prev = anode;
         apps_list = anode;
         apps_array[app_pid] = anode;
+        anode->appno = num_apps;
         num_apps++;
         printf("Managing new application %d\n", app_pid);
     } else
@@ -255,7 +280,26 @@ static void manage(pid_t pid, pid_t app_pid, int appno_in)
 
 static void unmanage(pid_t pid, pid_t app_pid)
 {
-    /* remove from array and unlink */
+    assert(pdata_array[pid] != NULL);
+
+    /* remove process */
+    PerfData *pnode = pdata_array[pid];
+
+    if (pnode->prev) {
+        PerfData *prev = pnode->prev;
+        prev->next = pnode->next;
+    }
+    if (pnode->next) {
+        PerfData *next = pnode->next;
+        next->prev = pnode->prev;
+    }
+
+    if (pnode == pdata_list)
+        pdata_list = pnode->next;
+
+    delete pnode;
+
+    /* remove app from array and unlink */
     if (apps_array[app_pid]) {
         assert(apps_array[app_pid]->refcount > 0);
         apps_array[app_pid]->refcount--;
@@ -290,110 +334,69 @@ static void unmanage(pid_t pid, pid_t app_pid)
     }
 }
 
-int SharGetDir(string dir, string taskname, std::map<int, int> &files)
-{
-    DIR *dp;
-    struct dirent *dirp;
-    int tmpchild = 0;
-    if ((dp = opendir(dir.c_str())) == NULL) {
-        if (print_proc_creation) std::cout << "Error(" << errno << ") opening " << dir << std::endl;
-        printf("Oh dear, something went wrong with read()! %s\n", strerror(errno));
-        return errno;
-    }
+/**
+ * @app_pid = an app to traverse its tree or 0 to remove all children
+ */
+void update_children(pid_t app_pid) {
+    pid_t frontier[8192];
+    int frontier_l = 0;
 
-    while ((dirp = readdir(dp)) != NULL) {
-        if (!(string(dirp->d_name).compare(".") == 0 || string(dirp->d_name).compare("..") == 0))
-            files.insert(std::pair<int, int>(atoi(dirp->d_name), 0));
-    }
+    frontier[frontier_l++] = app_pid;
+    while (frontier_l > 0) {
+        pid_t cur_pid = frontier[--frontier_l];
+        char path[512];
+        DIR *dir;
+        struct dirent *ent;
 
-    string childfilename = "/proc/" + taskname + "/task/" + taskname + "/children";
-    std::ifstream childrd(childfilename);
-    if (print_proc_creation) std::cout << "Children traversal ";
 
-    if (childrd.is_open()) {
-        while (childrd >> tmpchild) {
-            if (print_proc_creation) std::cout << tmpchild << '\t';
-            files.insert(std::pair<int, int>(tmpchild, 0));
+        snprintf(path, sizeof path, "/proc/%d/task", cur_pid);
+
+        if (!(dir = opendir(path)))
+            continue;
+
+        while ((ent = readdir(dir))) {
+            char *endptr;
+            pid_t task, npid;
+            FILE *children_f;
+            errno = 0;
+
+            task = strtol(ent->d_name, &endptr, 0);
+
+            if (endptr == ent->d_name || errno != 0 || task == 0)
+                continue;
+
+            /* this is a valid pid, so add a perfdata for it if there
+             * isn't already one */
+            if (!pdata_array[task]) {
+                manage(task, app_pid);
+            }
+
+            if (pdata_array[task])
+                pdata_array[task]->touched = true;
+
+            snprintf(path, sizeof path, "/proc/%d/task/%d/children", cur_pid, task);
+
+            if (!(children_f = fopen(path, "r")))
+                continue;
+
+            while (fscanf(children_f, "%d", &npid) == 1)
+                frontier[frontier_l++] = npid;
+
+            fclose(children_f);
         }
-        childrd.close();
-    }
-    closedir(dp);
 
-    if (print_proc_creation) std::cout << "\n";
-    return 0;
+        closedir(dir);
+    }
 }
 
-int SharGetDescendants(string dirpath, string taskname, std::map<int, int> &files, int exec)
-{
-    SharGetDir(dirpath, taskname, files);
-
-    std::map<int, int>::iterator i = files.find(stoi(taskname));
-    if (i != files.end())
-        i->second = exec;
-    else
-        std::cout << "Unexpected error " << taskname << " not found \n";
-
-    int proceed = 0;
-    /* Proceed = 0, dont consider
-       Proceed = 1, just matched, still dont consider
-       Proceed = 2, Go ahead */
-    string tempfile;
-
-    if (print_proc_creation) std::cout << "Get Descendants " << taskname << "::  "
-        << "eXEC: " << exec;
-    for (i = files.begin(); i != files.end(); ++i) {
-        // TO DO: Have to avoid reiteration of parents
-        tempfile = std::to_string(i->first);
-        if (print_proc_creation) std::cout << tempfile << '\t';
-
-        if (tempfile.compare(taskname) == 0) proceed = 1;
-        if (proceed == 2 && i->second == 0) {
-            string filename = "/proc/" + tempfile + "/task";
-            SharGetDescendants(filename, tempfile, files, exec);
-        }
-        if (proceed == 1) proceed = 2;
-    }
-    if (print_proc_creation) std::cout << '\n';
-    return 0;
-}
-
-class PerfData
-{
-  public:
-    void initialize(int tid, int app_tid, int appno_in);
-    ~PerfData();
-    void readCounters(int index);  // argument added for copying
-    void printCounters(int index); // argument added for copying
-
-    int init;
-    struct options_t *options;
-    int memfd;     // file descriptor, from shm_open()
-    char *membase; // base address, from mmap()
-    int touch;
-    pid_t app_pid;
-    pid_t pid;
-    size_t memsize;
-    int bottleneck[MAX_COUNTERS];
-    int active;
-    double val[MAX_COUNTERS];
-};
-
-void PerfData::initialize(int tid, int app_tid, int appno_in)
+void PerfData::initialize(pid_t tid, pid_t app_tid)
 {
     std::cout << "Performing init for new thread with TID: " << tid << std::endl;
     pid = tid;
-    // std::string pidnum = std::to_string(tid);
-    memsize = sizeof(struct options_t);
-    // In the spirit of the prev shared memory map. 
-    membase = (char*) malloc(sizeof (struct options_t));
-    // system(commandstring.c_str());
-    options = (struct options_t *)membase;
+    options = new options_t();
     options->countercount = 10;
     app_pid = app_tid;
-    manage(tid, app_tid, appno_in);
-    std::cout << "Done with manage \n";
     init = 1;
-    return;
 }
 void PerfData::printCounters(int index)
 {
@@ -526,8 +529,7 @@ void PerfData::readCounters(int index)
 
 PerfData::~PerfData()
 {
-    unmanage(pid, app_pid);
-    free(membase);
+    delete options;
 }
 
 void setup_file_limits()
@@ -551,17 +553,9 @@ void setup_file_limits()
     return;
 }
 
-std::map<int, PerfData *> perfdata;
 int main(int argc, char *argv[])
 {
     int init_error = 0;
-    int appno = 1;
-    std::map<int, int> files;
-    struct dirent *de;
-    std::map<int, int>::iterator i;
-    std::map<int, PerfData *>::iterator perfiter;
-    int appiter = 0;
-    DIR *dr;
 
     setlocale(LC_ALL, "");
 
@@ -573,9 +567,6 @@ int main(int argc, char *argv[])
     srandom(random_seed);
 
     setup_file_limits();
-    // Code Added
-    pid_t tid[200];
-    int this_index = 0;
     // Initialize what event we want
     initialize_events();
 
@@ -584,8 +575,6 @@ int main(int argc, char *argv[])
     signal(SIGINT, &sigterm_handler);
     signal(SIGUSR1, &siginfo_handler);
 
-    cpu_set_t *remaining_cpus;
-    size_t rem_cpus_sz;
     if (init_thresholds == 0) {
         thresh_pt[METRIC_ACTIVE] = 1000000; // cycles
         thresh_pt[METRIC_AVGIPC] = 70;      // instructions scaled to 100
@@ -613,6 +602,7 @@ int main(int argc, char *argv[])
         }
         printf("pid_max = %d\n", pid_max);
         apps_array = (struct appinfo **)calloc(pid_max, sizeof *apps_array);
+        pdata_array = (PerfData **) calloc(pid_max, sizeof *pdata_array);
         fclose(pid_max_fp);
 
         /* get CPU topology */
@@ -665,493 +655,458 @@ int main(int argc, char *argv[])
         init_thresholds = 1;
     }
     if (init_error == -1) goto END;
-RESUME:
-    files.clear();
-    dr = opendir(SAM_RUN_DIR);
 
-    if (dr == NULL) {
-        printf("Could not open " SAM_RUN_DIR);
-        return 0;
-    }
+    while (!stoprun) {
+        pid_t pids_to_monitor[8192];
+        int pids_to_monitor_l = 0;
 
-    while ((de = readdir(dr)) != NULL) {
-        if (!((strcmp(de->d_name, ".") == 0) || (strcmp(de->d_name, "..") == 0))) {
-            printf("%s\n", de->d_name);
+        cpu_set_t *remaining_cpus;
+        size_t rem_cpus_sz;
 
-            string appname(de->d_name);
-            string filename = "/proc/" + appname + "/task";
-            std::cout << " Container launcher PID " << atoi(de->d_name) << " " << filename << "\n";
-            SharGetDescendants(filename, appname, files, appno);
-            // appmap.insert(std::pair<int, int>(appno-1, atoi(de->d_name)));
-            appIDmap[appno - 1] = atoi(de->d_name);
-            appno++;
-        }
-    }
-    appiter = 0;
-
-    //if (print_proc_creation) 
-    std::cout << "\n PIDs tracked: ";
-    // Code added
-    this_index = 0;
-    for (i = files.begin(); i != files.end(); ++i) {
-        tid[this_index++] = i->first;
-        if (print_proc_creation) printf("TID:%d\n", i->first);
-    }
-
-    // Comment added by Sayak Chakraborti:
-    count_event_perfMultiplex(
-        tid,
-        this_index); // Comment added by Sayak Chakraborti, call this function to
-                     // count for all tids for a particular interval of time
-    displayTIDEvents(tid,
-                     this_index); // required to copy values to my data structures
-
-    for (i = files.begin(); i != files.end(); ++i) {
-
-        int pid = i->first;
-        int my_index = searchTID(pid); // Code added to get index in the THREADS data structure
-        //  printf("Main my_index:%d\n",my_index);
-
-        std::cout << " " << i->first;
-        perfiter = perfdata.find(pid);
-
-        if (perfiter == perfdata.end()) {
-            std::cout << pid << " is not found in perfdata. Adding it under " << i->second << "\n";
-
-            PerfData *perfcreate = new PerfData();
-            perfcreate->initialize(pid, appIDmap[((i->second) - 1)], i->second - 1);
-            perfdata.insert(std::pair<int, PerfData *>(pid, perfcreate));
-            perfiter = perfdata.find(pid);
-            perfcreate = NULL;
-        }
-        PerfData *temp;
-
-        temp = perfiter->second;
-
-        if (my_index != -1) temp->readCounters(my_index);
-
-        temp->touch = 1;
-        appiter++;
-    }
-
-    for (perfiter = perfdata.begin(); perfiter != perfdata.end();) {
-
-        int flag_touch = 0;
-        if (perfiter->second->touch == 0) {
-            std::cout << perfiter->first << " has not been touched this round. Deleting it.\n";
-            if (kill(perfiter->first, 0) < 0) {
-                if (errno == ESRCH)
-                    printf("Process %d  %d does not exist \n", perfiter->first,
-                           perfiter->second->options->pid);
-                else
-                    printf("Hmmm what the hell happened??? \n");
-            } else
-                printf(" Process exists so just continuing \n");
-
-            delete perfiter->second;
-            perfiter = perfdata.erase(perfiter);
-            flag_touch = 1;
-        }
-
-        if (flag_touch == 0) {
-            perfiter->second->touch = 0;
-            ++perfiter;
-        }
-    }
-    closedir(dr);
-
-    /* derive app statistics */
-    for (struct appinfo *an = apps_list; an; an = an->next) {
-        an->metric[METRIC_ACTIVE] = an->value[0];
-        an->metric[METRIC_AVGIPC] = (an->value[1] * 1000) / (1 + an->value[0]);
-        an->metric[METRIC_MEM] = an->value[8];
-        an->metric[METRIC_INTRA] = an->value[7] - (an->value[5] + an->value[6]);
-        an->metric[METRIC_INTER] = an->value[9];
-        an->extra_metric[EXTRA_METRIC_IpCOREpS] = an->value[1] / CPU_COUNT_S(CPU_ALLOC_SIZE(cpuinfo->total_cpus), an->cpuset[0]);
-
-        if (!(an->ts.tv_sec == 0 && an->ts.tv_nsec == 0)) {
-            struct timespec diff_ts;
-            clock_gettime(CLOCK_MONOTONIC_RAW, &diff_ts);
-
-            if (diff_ts.tv_nsec < an->ts.tv_nsec) {
-                diff_ts.tv_sec = diff_ts.tv_sec - an->ts.tv_sec - 1;
-                diff_ts.tv_nsec = 1000000000 - (an->ts.tv_nsec - diff_ts.tv_nsec);
-            } else {
-                diff_ts.tv_sec -= an->ts.tv_sec;
-                diff_ts.tv_nsec -= an->ts.tv_nsec;
-            }
-
-            /*
-             * Compute instructions / second
-             */
-            an->extra_metric[EXTRA_METRIC_IPS] = an->value[EVENT_INSTRUCTIONS] 
-                / (diff_ts.tv_sec + (double) diff_ts.tv_nsec / 1000000000);
-        } else
-            clock_gettime(CLOCK_MONOTONIC_RAW, &an->ts);
-    }
-
-    /* map applications */
-    remaining_cpus = CPU_ALLOC(cpuinfo->total_cpus);
-    rem_cpus_sz = CPU_ALLOC_SIZE(cpuinfo->total_cpus);
-
-    CPU_ZERO_S(rem_cpus_sz, remaining_cpus);
-    for (int i = 0; i < cpuinfo->total_cpus; ++i)
-        CPU_SET_S(i, rem_cpus_sz, remaining_cpus);
-
-    if (num_apps > 0) {
-        const float budget_f = cpuinfo->total_cpus / (float)num_apps;
-        const int fair_share = MAX(ceilf(budget_f), SAM_MIN_CONTEXTS);
-        struct appinfo **apps_unsorted = (struct appinfo **)calloc(num_apps, sizeof *apps_unsorted);
-        struct appinfo **apps_sorted = (struct appinfo **)calloc(num_apps, sizeof *apps_sorted);
-        int *per_app_cpu_budget = (int *) calloc(num_apps, sizeof *per_app_cpu_budget);
-        int **per_app_cpu_orders = (int **) calloc(num_apps, sizeof *per_app_cpu_orders);
-        cpu_set_t **new_cpusets = (cpu_set_t **) calloc(num_apps, sizeof *new_cpusets);
-        int *needs_more = (int *) calloc(num_apps, sizeof *needs_more);
-        int initial_remaining_cpus = cpuinfo->total_cpus;
-        char buf[256];
-
-        int range_ends[N_METRICS + 1] = {0};
-
+        /* check for new applications / threads */
         {
-            int i = 0;
-            for (struct appinfo *an = apps_list; an; an = an->next) {
-                apps_unsorted[i] = an;
-                per_app_cpu_orders[i] = (int *) calloc(cpuinfo->total_cpus, sizeof *per_app_cpu_orders[i]);
-                i++;
+            DIR *dr;
+            struct dirent *de;
+            dr = opendir(SAM_RUN_DIR);
+
+            if (dr == NULL) {
+                printf("Could not open " SAM_RUN_DIR);
+                return 0;
             }
+
+            for (PerfData *pd = pdata_list; pd; pd = pd->next)
+                pd->touched = false;
+
+            while ((de = readdir(dr)) != NULL) {
+                if (!((strcmp(de->d_name, ".") == 0) || (strcmp(de->d_name, "..") == 0))) {
+                    int app_pid = atoi(de->d_name);
+                    update_children(app_pid);
+                }
+            }
+
+            /* remove all untouched children */
+            for (PerfData *pd = pdata_list; pd; ) {
+                PerfData *next = pd->next;
+                if (!pd->touched)
+                    unmanage(pd->pid, pd->app_pid);
+                pd = next;
+            }
+
+            closedir(dr);
         }
 
-        /*
-         * apps_sorted[] will look like:
-         * [ apps sorted by bottleneck 1 | apps sorted by bottleneck 2 | ... |
-         * remaining ]
-         */
-        for (int i = 0; i < N_METRICS; ++i) {
-            range_ends[i + 1] = range_ends[i];
-            for (int j = 0; j < num_apps; ++j) {
-                if (apps_unsorted[j] && (i >= num_counter_orders ||
-                                         apps_unsorted[j]->bottleneck[counter_order[i]] > 0)) {
-                    apps_sorted[range_ends[i + 1]++] = apps_unsorted[j];
-                    apps_unsorted[j] = NULL;
+        printf("PIDs tracked:\n");
+        for (PerfData *pd = pdata_list; pd; pd = pd->next) {
+            pids_to_monitor[pids_to_monitor_l++] = pd->pid;
+            printf("%d\n", pd->pid);
+        }
+
+        // Comment added by Sayak Chakraborti:
+        count_event_perfMultiplex(
+            pids_to_monitor,
+            pids_to_monitor_l); // Comment added by Sayak Chakraborti, call this function to
+                         // count for all tids for a particular interval of time
+        displayTIDEvents(pids_to_monitor,
+                         pids_to_monitor_l); // required to copy values to my data structures
+
+        /* read counters */
+        for (PerfData *pd = pdata_list; pd; pd = pd->next) {
+            int my_index = searchTID(pd->pid);
+            if (my_index != -1)
+                pd->printCounters(my_index);
+        }
+
+        /* derive app statistics */
+        for (struct appinfo *an = apps_list; an; an = an->next) {
+            an->metric[METRIC_ACTIVE] = an->value[0];
+            an->metric[METRIC_AVGIPC] = (an->value[1] * 1000) / (1 + an->value[0]);
+            an->metric[METRIC_MEM] = an->value[8];
+            an->metric[METRIC_INTRA] = an->value[7] - (an->value[5] + an->value[6]);
+            an->metric[METRIC_INTER] = an->value[9];
+            an->extra_metric[EXTRA_METRIC_IpCOREpS] = an->value[1] / CPU_COUNT_S(CPU_ALLOC_SIZE(cpuinfo->total_cpus), an->cpuset[0]);
+
+            if (!(an->ts.tv_sec == 0 && an->ts.tv_nsec == 0)) {
+                struct timespec diff_ts;
+                clock_gettime(CLOCK_MONOTONIC_RAW, &diff_ts);
+
+                if (diff_ts.tv_nsec < an->ts.tv_nsec) {
+                    diff_ts.tv_sec = diff_ts.tv_sec - an->ts.tv_sec - 1;
+                    diff_ts.tv_nsec = 1000000000 - (an->ts.tv_nsec - diff_ts.tv_nsec);
+                } else {
+                    diff_ts.tv_sec -= an->ts.tv_sec;
+                    diff_ts.tv_nsec -= an->ts.tv_nsec;
+                }
+
+                /*
+                 * Compute instructions / second
+                 */
+                an->extra_metric[EXTRA_METRIC_IPS] = an->value[EVENT_INSTRUCTIONS] 
+                    / (diff_ts.tv_sec + (double) diff_ts.tv_nsec / 1000000000);
+            } else
+                clock_gettime(CLOCK_MONOTONIC_RAW, &an->ts);
+        }
+
+        /* map applications */
+        remaining_cpus = CPU_ALLOC(cpuinfo->total_cpus);
+        rem_cpus_sz = CPU_ALLOC_SIZE(cpuinfo->total_cpus);
+
+        CPU_ZERO_S(rem_cpus_sz, remaining_cpus);
+        for (int i = 0; i < cpuinfo->total_cpus; ++i)
+            CPU_SET_S(i, rem_cpus_sz, remaining_cpus);
+
+        if (num_apps > 0) {
+            const float budget_f = cpuinfo->total_cpus / (float)num_apps;
+            const int fair_share = MAX(ceilf(budget_f), SAM_MIN_CONTEXTS);
+            struct appinfo **apps_unsorted = (struct appinfo **)calloc(num_apps, sizeof *apps_unsorted);
+            struct appinfo **apps_sorted = (struct appinfo **)calloc(num_apps, sizeof *apps_sorted);
+            int *per_app_cpu_budget = (int *) calloc(num_apps, sizeof *per_app_cpu_budget);
+            int **per_app_cpu_orders = (int **) calloc(num_apps, sizeof *per_app_cpu_orders);
+            cpu_set_t **new_cpusets = (cpu_set_t **) calloc(num_apps, sizeof *new_cpusets);
+            int *needs_more = (int *) calloc(num_apps, sizeof *needs_more);
+            int initial_remaining_cpus = cpuinfo->total_cpus;
+            char buf[256];
+
+            int range_ends[N_METRICS + 1] = {0};
+
+            {
+                int i = 0;
+                for (struct appinfo *an = apps_list; an; an = an->next) {
+                    apps_unsorted[i] = an;
+                    per_app_cpu_orders[i] = (int *) calloc(cpuinfo->total_cpus, sizeof *per_app_cpu_orders[i]);
+                    i++;
                 }
             }
 
             /*
-             * We sort the apps that have bottlenecks. For the remaining apps
-             * (i >= num_counter_orders), we do not sort them.
+             * apps_sorted[] will look like:
+             * [ apps sorted by bottleneck 1 | apps sorted by bottleneck 2 | ... |
+             * remaining ]
              */
-            if (i < num_counter_orders) {
-                int met = counter_order[i];
-                qsort_r(&apps_sorted[range_ends[i]], range_ends[i + 1] - range_ends[i],
-                        sizeof *apps_sorted, &compare_apps_by_metric_desc, (void *)&met);
-            }
-        }
-
-        /*
-         * Each application computes its ideal budget.
-         */
-        for (int i = 0; i < N_METRICS; ++i) {
-            for (int j = range_ends[i]; j < range_ends[i + 1]; ++j) {
-                const int curr_alloc_len = CPU_COUNT_S(rem_cpus_sz, apps_sorted[j]->cpuset[0]);
-
-                per_app_cpu_budget[j] = MIN((int) apps_sorted[j]->bottleneck[METRIC_ACTIVE], fair_share);
+            for (int i = 0; i < N_METRICS; ++i) {
+                range_ends[i + 1] = range_ends[i];
+                for (int j = 0; j < num_apps; ++j) {
+                    if (apps_unsorted[j] && (i >= num_counter_orders ||
+                                             apps_unsorted[j]->bottleneck[counter_order[i]] > 0)) {
+                        apps_sorted[range_ends[i + 1]++] = apps_unsorted[j];
+                        apps_unsorted[j] = NULL;
+                    }
+                }
 
                 /*
-                 * If this app has already been given an allocation, then we can compute history
-                 * and excess cores.
+                 * We sort the apps that have bottlenecks. For the remaining apps
+                 * (i >= num_counter_orders), we do not sort them.
                  */
-                if (apps_sorted[j]->times_allocated > 0) {
-                    /* save performance history */
-                    uint64_t history[2];
-                    memcpy(history, apps_sorted[j]->perf_history[curr_alloc_len], sizeof history);
-                    history[1]++;
-                    history[0] = apps_sorted[j]->extra_metric[EXTRA_METRIC_IPS] * (1/(double)history[1]) + 
-                        history[0] * ((history[1] - 1)/(double)history[1]);
-                    memcpy(apps_sorted[j]->perf_history[curr_alloc_len], history, sizeof apps_sorted[j]->perf_history[curr_alloc_len]);
+                if (i < num_counter_orders) {
+                    int met = counter_order[i];
+                    qsort_r(&apps_sorted[range_ends[i]], range_ends[i + 1] - range_ends[i],
+                            sizeof *apps_sorted, &compare_apps_by_metric_desc, (void *)&met);
+                }
+            }
+
+            /*
+             * Each application computes its ideal budget.
+             */
+            for (int i = 0; i < N_METRICS; ++i) {
+                for (int j = range_ends[i]; j < range_ends[i + 1]; ++j) {
+                    const int curr_alloc_len = CPU_COUNT_S(rem_cpus_sz, apps_sorted[j]->cpuset[0]);
+
+                    per_app_cpu_budget[j] = MIN((int) apps_sorted[j]->bottleneck[METRIC_ACTIVE], fair_share);
 
                     /*
-                     * Change application's fair share count if the creation of new applications
-                     * changes the fair share.
+                     * If this app has already been given an allocation, then we can compute history
+                     * and excess cores.
                      */
-                    if (apps_sorted[j]->curr_fair_share != fair_share
-                            && apps_sorted[j]->perf_history[fair_share] != 0)
-                        apps_sorted[j]->curr_fair_share = fair_share;
+                    if (apps_sorted[j]->times_allocated > 0) {
+                        /* save performance history */
+                        uint64_t history[2];
+                        memcpy(history, apps_sorted[j]->perf_history[curr_alloc_len], sizeof history);
+                        history[1]++;
+                        history[0] = apps_sorted[j]->extra_metric[EXTRA_METRIC_IPS] * (1/(double)history[1]) + 
+                            history[0] * ((history[1] - 1)/(double)history[1]);
+                        memcpy(apps_sorted[j]->perf_history[curr_alloc_len], history, sizeof apps_sorted[j]->perf_history[curr_alloc_len]);
 
-                    uint64_t curr_perf = apps_sorted[j]->perf_history[curr_alloc_len][0];
-
-                    if (apps_sorted[j]->times_allocated > 1) {
                         /*
-                         * Compare current performance with previous performance, if this application
-                         * has at least two items in history.
+                         * Change application's fair share count if the creation of new applications
+                         * changes the fair share.
                          */
-                        if (CPU_EQUAL_S(rem_cpus_sz, apps_sorted[j]->cpuset[0], apps_sorted[j]->cpuset[1])) {
-                            const int prev_alloc_len = CPU_COUNT_S(rem_cpus_sz, apps_sorted[j]->cpuset[1]);
-                            uint64_t prev_perf = apps_sorted[j]->perf_history[prev_alloc_len][0];
+                        if (apps_sorted[j]->curr_fair_share != fair_share
+                                && apps_sorted[j]->perf_history[fair_share] != 0)
+                            apps_sorted[j]->curr_fair_share = fair_share;
 
+                        uint64_t curr_perf = apps_sorted[j]->perf_history[curr_alloc_len][0];
+
+                        if (apps_sorted[j]->times_allocated > 1) {
                             /*
-                             * Change requested resources.
+                             * Compare current performance with previous performance, if this application
+                             * has at least two items in history.
                              */
-                            if (curr_perf > prev_perf 
-                                && (curr_perf - prev_perf) / (double) prev_perf >= SAM_PERF_THRESH
-                                && apps_sorted[j]->exploring) {
-                                /* Keep going in the same direction. */
-                                if (prev_alloc_len < curr_alloc_len)
-                                    per_app_cpu_budget[j] += SAM_PERF_STEP;
-                                else
-                                    per_app_cpu_budget[j] -= SAM_PERF_STEP;
-                            } else {
-                                if (curr_perf < prev_perf
-                                    && (prev_perf - curr_perf) / (double) prev_perf >= SAM_PERF_THRESH) {
-                                    if (apps_sorted[j]->exploring) {
-                                        /*
-                                         * Revert to previous count if performance reduction was great enough.
-                                         */
-                                        per_app_cpu_budget[j] = prev_alloc_len;
-                                    } else {
-                                        int guess = per_app_cpu_budget[j] + guess_optimization();
-                                        apps_sorted[j]->exploring = true;
-                                        printf("[APP %5d] exploring %d -> %d\n", apps_sorted[j]->pid,
-                                                per_app_cpu_budget[j], guess);
-                                        per_app_cpu_budget[j] = guess;
-                                    }
+                            if (CPU_EQUAL_S(rem_cpus_sz, apps_sorted[j]->cpuset[0], apps_sorted[j]->cpuset[1])) {
+                                const int prev_alloc_len = CPU_COUNT_S(rem_cpus_sz, apps_sorted[j]->cpuset[1]);
+                                uint64_t prev_perf = apps_sorted[j]->perf_history[prev_alloc_len][0];
+
+                                /*
+                                 * Change requested resources.
+                                 */
+                                if (curr_perf > prev_perf 
+                                    && (curr_perf - prev_perf) / (double) prev_perf >= SAM_PERF_THRESH
+                                    && apps_sorted[j]->exploring) {
+                                    /* Keep going in the same direction. */
+                                    if (prev_alloc_len < curr_alloc_len)
+                                        per_app_cpu_budget[j] += SAM_PERF_STEP;
+                                    else
+                                        per_app_cpu_budget[j] -= SAM_PERF_STEP;
                                 } else {
-                                    apps_sorted[j]->exploring = false;
+                                    if (curr_perf < prev_perf
+                                        && (prev_perf - curr_perf) / (double) prev_perf >= SAM_PERF_THRESH) {
+                                        if (apps_sorted[j]->exploring) {
+                                            /*
+                                             * Revert to previous count if performance reduction was great enough.
+                                             */
+                                            per_app_cpu_budget[j] = prev_alloc_len;
+                                        } else {
+                                            int guess = per_app_cpu_budget[j] + guess_optimization();
+                                            apps_sorted[j]->exploring = true;
+                                            printf("[APP %5d] exploring %d -> %d\n", apps_sorted[j]->pid,
+                                                    per_app_cpu_budget[j], guess);
+                                            per_app_cpu_budget[j] = guess;
+                                        }
+                                    } else {
+                                        apps_sorted[j]->exploring = false;
+                                    }
                                 }
+                            } else if (!apps_sorted[j]->exploring 
+                                    && random() / (double) RAND_MAX <= SAM_DISTURB_PROB) {
+                                /*
+                                 * Introduce random disturbances.
+                                 */
+                                int guess = per_app_cpu_budget[j] + guess_optimization();
+                                apps_sorted[j]->exploring = true;
+                                printf("[APP %5d] random disturbance: %d -> %d\n", apps_sorted[j]->pid,
+                                        per_app_cpu_budget[j], guess);
+                                per_app_cpu_budget[j] = guess;
                             }
-                        } else if (!apps_sorted[j]->exploring 
-                                && random() / (double) RAND_MAX <= SAM_DISTURB_PROB) {
-                            /*
-                             * Introduce random disturbances.
-                             */
-                            int guess = per_app_cpu_budget[j] + guess_optimization();
-                            apps_sorted[j]->exploring = true;
-                            printf("[APP %5d] random disturbance: %d -> %d\n", apps_sorted[j]->pid,
-                                    per_app_cpu_budget[j], guess);
-                            per_app_cpu_budget[j] = guess;
-                        }
-                    }
-
-                    /*
-                     * If we're the last application, then we get the remaining cores
-                     * nobody wanted.
-                     *
-                     * TODO: move this into IPC-bottleneck budgeting
-                     */
-                    /*
-                    if (j == num_apps - 1)
-                        per_app_cpu_budget[j] += div(cpuinfo->total_cpus, num_apps).rem;
-                        */
-                } else {
-                    /*
-                     * If this app has never been given an allocation, the first allocation we should 
-                     * give it is the fair share.
-                     */
-                    per_app_cpu_budget[j] = fair_share;
-                }
-
-                int diff = initial_remaining_cpus - per_app_cpu_budget[j];
-                printf("[APP %d] Requiring %d / %d remaining CPUs\n", 
-                        apps_sorted[j]->pid,
-                        per_app_cpu_budget[j],
-                        initial_remaining_cpus);
-                needs_more[j] = MAX(-diff, 0);
-                initial_remaining_cpus = MAX(diff, 0);
-            }
-        }
-
-        /*
-         * Compute the budgets.
-         */
-        for (int i = 0; i < N_METRICS; ++i) {
-            for (int j = range_ends[i]; j < range_ends[i + 1]; ++j) {
-                cpu_set_t *new_cpuset;
-
-                new_cpuset = CPU_ALLOC(cpuinfo->total_cpus);
-                CPU_ZERO_S(rem_cpus_sz, new_cpuset);
-
-
-                if (i < num_counter_orders) {
-                    int met = counter_order[i];
-
-                    /*
-                     * compute the CPU budget for this application, given its bottleneck
-                     * [met]
-                     */
-                    (*budgeter_functions[met])(apps_sorted[j]->cpuset[0], new_cpuset, 
-                            per_app_cpu_orders[j],
-                            remaining_cpus, rem_cpus_sz, per_app_cpu_budget[j]);
-                } else {
-                    budget_default(apps_sorted[j]->cpuset[0], new_cpuset, 
-                            per_app_cpu_orders[j],
-                            remaining_cpus, rem_cpus_sz, per_app_cpu_budget[j]);
-                }
-
-                /* subtract allocated cpus from remaining cpus,
-                 * [new_cpuset] is already a subset of [remaining_cpus] */
-                CPU_XOR_S(rem_cpus_sz, remaining_cpus, remaining_cpus, new_cpuset);
-                per_app_cpu_budget[j] = CPU_COUNT_S(rem_cpus_sz, new_cpuset);
-                new_cpusets[j] = new_cpuset;
-            }
-        }
-
-        /*
-         * Now we adjust the budgets to fit the resources.
-         */
-        for (int i = 0; i < N_METRICS; ++i) {
-            for (int j = range_ends[i]; j < range_ends[i + 1]; ++j) {
-                /*
-                 * Make sure we have enough CPUs to give the budget.
-                 */
-                if (needs_more[j] > 0) {
-                    struct appinfo **candidates = new struct appinfo*[num_apps]();
-                    int *candidates_map = new int[num_apps]();
-                    int num_candidates = 0;
-                    int *spare_cores = new int[num_apps]();
-
-                    printf("Application %d needs %d more hardware contexts.\n", j, needs_more[j]);
-
-                    /*
-                     * Find the least efficient application to steal CPUs from.
-                     */
-                    for (int l = 0; l < num_apps; ++l) {
-                        if (l == j)
-                            continue;
-
-                        int curr_alloc_len_l = CPU_COUNT_S(rem_cpus_sz, new_cpusets[l]);
-                        uint64_t curr_perf = apps_sorted[l]->perf_history[curr_alloc_len_l][0];
-                        uint64_t best_perf = apps_sorted[l]->perf_history[apps_sorted[l]->curr_fair_share][0];
-
-                        if (curr_perf > SAM_MIN_QOS * best_perf) {
-                            uint64_t extra_perf = curr_perf - SAM_MIN_QOS * best_perf;
-                            spare_cores[l] = extra_perf / (double) curr_perf * curr_alloc_len_l;
                         }
 
-                        if (apps_sorted[l]->times_allocated > 0 && spare_cores[l] > 0) {
-                            candidates[num_candidates] = apps_sorted[l];
-                            candidates_map[apps_sorted[l]->appnoref] = l;
-                            num_candidates++;
-                        }
-                    }
-
-                    /*
-                     * It's impossible for us to have less than the fair share available
-                     * without there being at least one other application.
-                     */
-                    assert(num_candidates > 0);
-
-                    /*
-                     * Sort by efficiency.
-                     */
-                    int met = EXTRA_METRIC_IpCOREpS;
-                    qsort_r(candidates, num_candidates, sizeof *candidates,
-                            &compare_apps_by_extra_metric_desc, (void *) &met);
-
-                    /*
-                     * Start by taking away contexts from the least efficient applications.
-                     */
-                    for (int l = num_candidates - 1; l > 0 && needs_more[j] > 0; --l) {
-                        int m = candidates_map[candidates[l]->appnoref];
-
-                        for (int n = 0; n < spare_cores[m]; ++n) {
-                            int cpu = per_app_cpu_orders[m][per_app_cpu_budget[m] - 1];
-
-                            CPU_CLR_S(cpu, rem_cpus_sz, new_cpusets[m]);
-                            CPU_SET_S(cpu, rem_cpus_sz, new_cpusets[j]);
-                            per_app_cpu_budget[m]--;
-                            per_app_cpu_budget[j]++;
-                            needs_more[j]--;
-                        }
-                    }
-
-                    delete[] spare_cores;
-                    delete[] candidates;
-                    delete[] candidates_map;
-                }
-            }
-        }
-
-        /*
-         * Iterate again. This time, apply the budgets.
-         */
-        for (int i = 0; i < N_METRICS; ++i) {
-            if (i < num_counter_orders) {
-                int met = counter_order[i];
-                printf("%d apps sorted by %s:\n", range_ends[i + 1] - range_ends[i],
-                       metric_names[met]);
-            } else {
-                printf("%d apps unsorted:\n", range_ends[i + 1] - range_ends[i]);
-            }
-
-            for (int j = range_ends[i]; j < range_ends[i + 1]; ++j) {
-                int *mybudget = NULL;
-                int mybudget_l = 0;
-                int *intlist = NULL;
-                size_t intlist_l = 0;
-                char cg_name[256];
-
-                snprintf(cg_name, sizeof cg_name, "sam/app-%d", apps_sorted[j]->pid);
-                cg_read_intlist(cgroot, cntrlr, cg_name, "cpuset.cpus", &intlist, &intlist_l);
-
-                cpuset_to_intlist(new_cpusets[j], cpuinfo->total_cpus, &mybudget, &mybudget_l);
-                intlist_to_string(mybudget, mybudget_l, buf, sizeof buf, ",");
-
-                if (i < num_counter_orders) {
-                    int met = counter_order[i];
-                    printf("\t[APP %5d] = %'" PRIu64 " (cpuset = %s)\n", apps_sorted[j]->pid,
-                           apps_sorted[j]->metric[met],
-                           intlist_to_string(intlist, intlist_l, buf, sizeof buf, ","));
-                } else {
-                    printf("\t[APP %5d] (cpuset = %s)\n", apps_sorted[j]->pid,
-                           intlist_to_string(intlist, intlist_l, buf, sizeof buf, ","));
-                }
-
-                /* set the cpuset */
-                if (mybudget_l > 0) {
-                    if (cg_write_intlist(cgroot, cntrlr, cg_name, "cpuset.cpus", mybudget,
-                                         mybudget_l) != 0) {
-                        fprintf(stderr, "\t\tfailed to set CPU budget to %s: %s\n", buf,
-                                strerror(errno));
+                        /*
+                         * If we're the last application, then we get the remaining cores
+                         * nobody wanted.
+                         *
+                         * TODO: move this into IPC-bottleneck budgeting
+                         */
+                        /*
+                        if (j == num_apps - 1)
+                            per_app_cpu_budget[j] += div(cpuinfo->total_cpus, num_apps).rem;
+                            */
                     } else {
-                        /* save history */
-                        memcpy(apps_sorted[j]->cpuset[1], apps_sorted[j]->cpuset[0], rem_cpus_sz);
-                        memcpy(apps_sorted[j]->cpuset[0], new_cpusets[j], rem_cpus_sz);
+                        /*
+                         * If this app has never been given an allocation, the first allocation we should 
+                         * give it is the fair share.
+                         */
+                        per_app_cpu_budget[j] = fair_share;
+                    }
 
-                        apps_sorted[j]->times_allocated++;
-                        apps_sorted[j]->curr_fair_share = mybudget_l;
-                        printf("\t\tset CPU budget to %s\n", buf);
+                    int diff = initial_remaining_cpus - per_app_cpu_budget[j];
+                    printf("[APP %d] Requiring %d / %d remaining CPUs\n", 
+                            apps_sorted[j]->pid,
+                            per_app_cpu_budget[j],
+                            initial_remaining_cpus);
+                    needs_more[j] = MAX(-diff, 0);
+                    initial_remaining_cpus = MAX(diff, 0);
+                }
+            }
+
+            /*
+             * Compute the budgets.
+             */
+            for (int i = 0; i < N_METRICS; ++i) {
+                for (int j = range_ends[i]; j < range_ends[i + 1]; ++j) {
+                    cpu_set_t *new_cpuset;
+
+                    new_cpuset = CPU_ALLOC(cpuinfo->total_cpus);
+                    CPU_ZERO_S(rem_cpus_sz, new_cpuset);
+
+
+                    if (i < num_counter_orders) {
+                        int met = counter_order[i];
+
+                        /*
+                         * compute the CPU budget for this application, given its bottleneck
+                         * [met]
+                         */
+                        (*budgeter_functions[met])(apps_sorted[j]->cpuset[0], new_cpuset, 
+                                per_app_cpu_orders[j],
+                                remaining_cpus, rem_cpus_sz, per_app_cpu_budget[j]);
+                    } else {
+                        budget_default(apps_sorted[j]->cpuset[0], new_cpuset, 
+                                per_app_cpu_orders[j],
+                                remaining_cpus, rem_cpus_sz, per_app_cpu_budget[j]);
+                    }
+
+                    /* subtract allocated cpus from remaining cpus,
+                     * [new_cpuset] is already a subset of [remaining_cpus] */
+                    CPU_XOR_S(rem_cpus_sz, remaining_cpus, remaining_cpus, new_cpuset);
+                    per_app_cpu_budget[j] = CPU_COUNT_S(rem_cpus_sz, new_cpuset);
+                    new_cpusets[j] = new_cpuset;
+                }
+            }
+
+            /*
+             * Now we adjust the budgets to fit the resources.
+             */
+            for (int i = 0; i < N_METRICS; ++i) {
+                for (int j = range_ends[i]; j < range_ends[i + 1]; ++j) {
+                    /*
+                     * Make sure we have enough CPUs to give the budget.
+                     */
+                    if (needs_more[j] > 0) {
+                        struct appinfo **candidates = new struct appinfo*[num_apps]();
+                        int *candidates_map = new int[num_apps]();
+                        int num_candidates = 0;
+                        int *spare_cores = new int[num_apps]();
+
+                        printf("Application %d needs %d more hardware contexts.\n", j, needs_more[j]);
+
+                        /*
+                         * Find the least efficient application to steal CPUs from.
+                         */
+                        for (int l = 0; l < num_apps; ++l) {
+                            if (l == j)
+                                continue;
+
+                            int curr_alloc_len_l = CPU_COUNT_S(rem_cpus_sz, new_cpusets[l]);
+                            uint64_t curr_perf = apps_sorted[l]->perf_history[curr_alloc_len_l][0];
+                            uint64_t best_perf = apps_sorted[l]->perf_history[apps_sorted[l]->curr_fair_share][0];
+
+                            if (curr_perf > SAM_MIN_QOS * best_perf) {
+                                uint64_t extra_perf = curr_perf - SAM_MIN_QOS * best_perf;
+                                spare_cores[l] = extra_perf / (double) curr_perf * curr_alloc_len_l;
+                            }
+
+                            if (apps_sorted[l]->times_allocated > 0 && spare_cores[l] > 0) {
+                                candidates[num_candidates] = apps_sorted[l];
+                                candidates_map[apps_sorted[l]->appno] = l;
+                                num_candidates++;
+                            }
+                        }
+
+                        /*
+                         * It's impossible for us to have less than the fair share available
+                         * without there being at least one other application.
+                         */
+                        assert(num_candidates > 0);
+
+                        /*
+                         * Sort by efficiency.
+                         */
+                        int met = EXTRA_METRIC_IpCOREpS;
+                        qsort_r(candidates, num_candidates, sizeof *candidates,
+                                &compare_apps_by_extra_metric_desc, (void *) &met);
+
+                        /*
+                         * Start by taking away contexts from the least efficient applications.
+                         */
+                        for (int l = num_candidates - 1; l > 0 && needs_more[j] > 0; --l) {
+                            int m = candidates_map[candidates[l]->appno];
+
+                            for (int n = 0; n < spare_cores[m]; ++n) {
+                                int cpu = per_app_cpu_orders[m][per_app_cpu_budget[m] - 1];
+
+                                CPU_CLR_S(cpu, rem_cpus_sz, new_cpusets[m]);
+                                CPU_SET_S(cpu, rem_cpus_sz, new_cpusets[j]);
+                                per_app_cpu_budget[m]--;
+                                per_app_cpu_budget[j]++;
+                                needs_more[j]--;
+                            }
+                        }
+
+                        delete[] spare_cores;
+                        delete[] candidates;
+                        delete[] candidates_map;
                     }
                 }
-
-                CPU_FREE(new_cpusets[j]);
-                free(mybudget);
-                free(intlist);
             }
+
+            /*
+             * Iterate again. This time, apply the budgets.
+             */
+            for (int i = 0; i < N_METRICS; ++i) {
+                if (i < num_counter_orders) {
+                    int met = counter_order[i];
+                    printf("%d apps sorted by %s:\n", range_ends[i + 1] - range_ends[i],
+                           metric_names[met]);
+                } else {
+                    printf("%d apps unsorted:\n", range_ends[i + 1] - range_ends[i]);
+                }
+
+                for (int j = range_ends[i]; j < range_ends[i + 1]; ++j) {
+                    int *mybudget = NULL;
+                    int mybudget_l = 0;
+                    int *intlist = NULL;
+                    size_t intlist_l = 0;
+                    char cg_name[256];
+
+                    snprintf(cg_name, sizeof cg_name, "sam/app-%d", apps_sorted[j]->pid);
+                    cg_read_intlist(cgroot, cntrlr, cg_name, "cpuset.cpus", &intlist, &intlist_l);
+
+                    cpuset_to_intlist(new_cpusets[j], cpuinfo->total_cpus, &mybudget, &mybudget_l);
+                    intlist_to_string(mybudget, mybudget_l, buf, sizeof buf, ",");
+
+                    if (i < num_counter_orders) {
+                        int met = counter_order[i];
+                        printf("\t[APP %5d] = %'" PRIu64 " (cpuset = %s)\n", apps_sorted[j]->pid,
+                               apps_sorted[j]->metric[met],
+                               intlist_to_string(intlist, intlist_l, buf, sizeof buf, ","));
+                    } else {
+                        printf("\t[APP %5d] (cpuset = %s)\n", apps_sorted[j]->pid,
+                               intlist_to_string(intlist, intlist_l, buf, sizeof buf, ","));
+                    }
+
+                    /* set the cpuset */
+                    if (mybudget_l > 0) {
+                        if (cg_write_intlist(cgroot, cntrlr, cg_name, "cpuset.cpus", mybudget,
+                                             mybudget_l) != 0) {
+                            fprintf(stderr, "\t\tfailed to set CPU budget to %s: %s\n", buf,
+                                    strerror(errno));
+                        } else {
+                            /* save history */
+                            memcpy(apps_sorted[j]->cpuset[1], apps_sorted[j]->cpuset[0], rem_cpus_sz);
+                            memcpy(apps_sorted[j]->cpuset[0], new_cpusets[j], rem_cpus_sz);
+
+                            apps_sorted[j]->times_allocated++;
+                            apps_sorted[j]->curr_fair_share = mybudget_l;
+                            printf("\t\tset CPU budget to %s\n", buf);
+                        }
+                    }
+
+                    CPU_FREE(new_cpusets[j]);
+                    free(mybudget);
+                    free(intlist);
+                }
+            }
+
+            free(new_cpusets);
+            free(apps_unsorted);
+            free(apps_sorted);
+            free(per_app_cpu_budget);
+            for (int i = 0; i < num_apps; ++i)
+                free(per_app_cpu_orders[i]);
+            free(per_app_cpu_orders);
+            free(needs_more);
         }
 
-        free(new_cpusets);
-        free(apps_unsorted);
-        free(apps_sorted);
-        free(per_app_cpu_budget);
-        for (int i = 0; i < num_apps; ++i)
-            free(per_app_cpu_orders[i]);
-        free(per_app_cpu_orders);
-        free(needs_more);
+        CPU_FREE(remaining_cpus);
+
+        /* reset app metrics and values */
+        for (struct appinfo *an = apps_list; an; an = an->next) {
+            memset(an->metric, 0, sizeof an->metric);
+            memset(an->extra_metric, 0, sizeof an->extra_metric);
+            memset(an->bottleneck, 0, sizeof an->bottleneck);
+            memset(an->value, 0, sizeof an->value);
+        }
+        sleep(1);
     }
 
-    CPU_FREE(remaining_cpus);
-
-    /* reset app metrics and values */
-    for (struct appinfo *an = apps_list; an; an = an->next) {
-        memset(an->metric, 0, sizeof an->metric);
-        memset(an->extra_metric, 0, sizeof an->extra_metric);
-        memset(an->bottleneck, 0, sizeof an->bottleneck);
-        memset(an->value, 0, sizeof an->value);
-    }
-    sleep(1);
-    if (stoprun == false)
-        goto RESUME;
-    else
-        std::cout << "Stopping .. \n";
+    std::cout << "Stopping .. \n";
 END:
     std::cout << " Exiting .. \n";
 }
