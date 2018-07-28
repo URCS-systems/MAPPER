@@ -842,7 +842,7 @@ int main(int argc, char *argv[])
                              * Compare current performance with previous performance, if this application
                              * has at least two items in history.
                              */
-                            if (CPU_EQUAL_S(rem_cpus_sz, apps_sorted[j]->cpuset[0], apps_sorted[j]->cpuset[1])) {
+                            if (!CPU_EQUAL_S(rem_cpus_sz, apps_sorted[j]->cpuset[0], apps_sorted[j]->cpuset[1])) {
                                 const int prev_alloc_len = CPU_COUNT_S(rem_cpus_sz, apps_sorted[j]->cpuset[1]);
                                 uint64_t prev_perf = apps_sorted[j]->perf_history[prev_alloc_len][0];
 
