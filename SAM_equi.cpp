@@ -132,9 +132,6 @@ const char *metric_names[N_METRICS] = {
     [METRIC_MEM]        = "Memory",
     [METRIC_INTRA]      = "Intra-socket communication",
     [METRIC_INTER]      = "Inter-socket communication",
-    [METRIC_REMOTE]     = "",
-    [METRIC_IpCOREpS]   = "Instructions / core-process",
-    [METRIC_IPS]        = "Instructions / second",
 };
 
 struct appinfo {
