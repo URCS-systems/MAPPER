@@ -202,11 +202,6 @@ void resetApps()
 void deriveAppStatistics(int num)
 {
     int i = 0;
-    // Need to add reasoning about its current placement and number of hardware
-    // contexts
-    // Need to calculate performance/sec in addition to IPC to put performance
-    // in context. To do this, we need to know how many CPUs are allocated
-    // to each application. Need to add that to the App data structure.
     for (int appiter = 0; appiter < num; appiter++) {
         i = 0;
         apps[appiter].metric[0] = apps[appiter].value[0];
@@ -257,15 +252,6 @@ void deriveAppStatistics(int num)
                 / (diff_ts.tv_sec + (double) diff_ts.tv_nsec / 1000000000);
         } else
             clock_gettime(CLOCK_MONOTONIC_RAW, &an->ts);
-
-        std::cout << "App is allocated: " << CPU_COUNT_S(CPU_ALLOC_SIZE(cpuinfo->total_cpus),an->cpuset[0])
-            << " CPUs \n" << "with IPCPS: " << an->metric[METRIC_IpCOREpS] << '\n';
-        for (int i = 0; i < num_counter_orders; ++i) {
-            if (an->bottleneck[counter_order[i]] > 0) {
-                printf("Added: App %d has bottleneck %s with metric %" PRIu64 "\n", an->pid,
-                        metric_names[counter_order[i]], an->metric[counter_order[i]]);
-            }
-        }
     }
     return;
 }
@@ -845,7 +831,6 @@ RESUME:
         cpu_set_t **new_cpusets = (cpu_set_t **) calloc(num_apps, sizeof *new_cpusets);
         int *needs_more = (int *) calloc(num_apps, sizeof *needs_more);
         int initial_remaining_cpus = cpuinfo->total_cpus;
-        char cg_name[256];
         char buf[256];
 
         int range_ends[N_METRICS + 1] = {0};
@@ -955,22 +940,15 @@ RESUME:
          */
         for (int i = 0; i < N_METRICS; ++i) {
             for (int j = range_ends[i]; j < range_ends[i + 1]; ++j) {
-                int *intlist = NULL;
-                size_t intlist_l = 0;
                 cpu_set_t *new_cpuset;
 
                 new_cpuset = CPU_ALLOC(cpuinfo->total_cpus);
                 CPU_ZERO_S(rem_cpus_sz, new_cpuset);
 
-                snprintf(cg_name, sizeof cg_name, "sam/app-%d", apps_sorted[j]->pid);
-                cg_read_intlist(cgroot, cntrlr, cg_name, "cpuset.cpus", &intlist, &intlist_l);
-
 
                 if (i < num_counter_orders) {
                     int met = counter_order[i];
-                    printf("\t[APP %5d] = %" PRIu64 " (cpuset = %s)\n", apps_sorted[j]->pid,
-                           apps_sorted[j]->metric[met],
-                           intlist_to_string(intlist, intlist_l, buf, sizeof buf, ","));
+
                     /*
                      * compute the CPU budget for this application, given its bottleneck
                      * [met]
@@ -979,9 +957,6 @@ RESUME:
                             per_app_cpu_orders[j],
                             remaining_cpus, rem_cpus_sz, per_app_cpu_budget[j]);
                 } else {
-                    printf("\t[APP %5d] (cpuset = %s)\n", apps_sorted[j]->pid,
-                           intlist_to_string(intlist, intlist_l, buf, sizeof buf, ","));
-
                     budget_default(apps_sorted[j]->cpuset[0], new_cpuset, 
                             per_app_cpu_orders[j],
                             remaining_cpus, rem_cpus_sz, per_app_cpu_budget[j]);
@@ -992,8 +967,6 @@ RESUME:
                 CPU_XOR_S(rem_cpus_sz, remaining_cpus, remaining_cpus, new_cpuset);
                 per_app_cpu_budget[j] = CPU_COUNT_S(rem_cpus_sz, new_cpuset);
                 new_cpusets[j] = new_cpuset;
-
-                free(intlist);
             }
         }
 
@@ -1077,19 +1050,35 @@ RESUME:
          * Iterate again. This time, apply the budgets.
          */
         for (int i = 0; i < N_METRICS; ++i) {
+            if (i < num_counter_orders) {
+                int met = counter_order[i];
+                printf("%d apps sorted by %s:\n", range_ends[i + 1] - range_ends[i],
+                       metric_names[met]);
+            } else {
+                printf("%d apps unsorted:\n", range_ends[i + 1] - range_ends[i]);
+            }
+
             for (int j = range_ends[i]; j < range_ends[i + 1]; ++j) {
                 int *mybudget = NULL;
                 int mybudget_l = 0;
+                int *intlist = NULL;
+                size_t intlist_l = 0;
+                char cg_name[256];
+
+                snprintf(cg_name, sizeof cg_name, "sam/app-%d", apps_sorted[j]->pid);
+                cg_read_intlist(cgroot, cntrlr, cg_name, "cpuset.cpus", &intlist, &intlist_l);
 
                 cpuset_to_intlist(new_cpusets[j], cpuinfo->total_cpus, &mybudget, &mybudget_l);
                 intlist_to_string(mybudget, mybudget_l, buf, sizeof buf, ",");
 
                 if (i < num_counter_orders) {
                     int met = counter_order[i];
-                    printf("%d apps sorted by %s:\n", range_ends[i + 1] - range_ends[i],
-                           metric_names[met]);
+                    printf("\t[APP %5d] = %'" PRIu64 " (cpuset = %s)\n", apps_sorted[j]->pid,
+                           apps_sorted[j]->metric[met],
+                           intlist_to_string(intlist, intlist_l, buf, sizeof buf, ","));
                 } else {
-                    printf("%d apps unsorted:\n", range_ends[i + 1] - range_ends[i]);
+                    printf("\t[APP %5d] (cpuset = %s)\n", apps_sorted[j]->pid,
+                           intlist_to_string(intlist, intlist_l, buf, sizeof buf, ","));
                 }
 
                 /* set the cpuset */
@@ -1111,6 +1100,7 @@ RESUME:
 
                 CPU_FREE(new_cpusets[j]);
                 free(mybudget);
+                free(intlist);
             }
         }
 
