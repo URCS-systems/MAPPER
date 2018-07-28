@@ -696,10 +696,10 @@ int main(int argc, char *argv[])
             closedir(dr);
         }
 
-        printf("PIDs tracked:\n");
+        // printf("PIDs tracked:\n");
         for (PerfData *pd = pdata_list; pd; pd = pd->next) {
             pids_to_monitor[pids_to_monitor_l++] = pd->pid;
-            printf("%d\n", pd->pid);
+            // printf("%d\n", pd->pid);
         }
 
         // Comment added by Sayak Chakraborti:
