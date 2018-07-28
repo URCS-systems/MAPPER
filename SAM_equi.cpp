@@ -68,6 +68,7 @@ using std::vector;
 #define SAM_PERF_THRESH         0.05    /* in fraction of previous performance */
 #define SAM_PERF_STEP           2       /* in number of CPUs */
 #define SAM_DISTURB_PROB        0.03    /* probability of a disturbance */
+#define SAM_INITIAL_ALLOCS      4       /* number of initial allocations before exploring */
 
 #define PRINT_COUNT true
 
@@ -810,13 +811,13 @@ int main(int argc, char *argv[])
                 for (int j = range_ends[i]; j < range_ends[i + 1]; ++j) {
                     const int curr_alloc_len = CPU_COUNT_S(rem_cpus_sz, apps_sorted[j]->cpuset[0]);
 
-                    per_app_cpu_budget[j] = MAX(MIN((int) apps_sorted[j]->bottleneck[METRIC_ACTIVE], fair_share), SAM_MIN_CONTEXTS);
+                    per_app_cpu_budget[j] = MAX((int) apps_sorted[j]->bottleneck[METRIC_ACTIVE], SAM_MIN_CONTEXTS);
 
                     /*
                      * If this app has already been given an allocation, then we can compute history
                      * and excess cores.
                      */
-                    if (apps_sorted[j]->times_allocated > 0) {
+                    if (apps_sorted[j]->times_allocated > SAM_INITIAL_ALLOCS) {
                         /* save performance history */
                         uint64_t history[2];
                         memcpy(history, apps_sorted[j]->perf_history[curr_alloc_len], sizeof history);
@@ -852,9 +853,9 @@ int main(int argc, char *argv[])
                                     && apps_sorted[j]->exploring) {
                                     /* Keep going in the same direction. */
                                     if (prev_alloc_len < curr_alloc_len)
-                                        per_app_cpu_budget[j] += SAM_PERF_STEP;
+                                        per_app_cpu_budget[j] = MIN(per_app_cpu_budget[j] + SAM_PERF_STEP, cpuinfo->total_cpus);
                                     else
-                                        per_app_cpu_budget[j] -= SAM_PERF_STEP;
+                                        per_app_cpu_budget[j] = MAX(per_app_cpu_budget[j] - SAM_PERF_STEP, SAM_MIN_CONTEXTS);
                                 } else {
                                     if (curr_perf < prev_perf
                                         && (prev_perf - curr_perf) / (double) prev_perf >= SAM_PERF_THRESH) {
@@ -865,6 +866,7 @@ int main(int argc, char *argv[])
                                             per_app_cpu_budget[j] = prev_alloc_len;
                                         } else {
                                             int guess = per_app_cpu_budget[j] + guess_optimization();
+                                            guess = MAX(MIN(guess, cpuinfo->total_cpus), SAM_MIN_CONTEXTS);
                                             apps_sorted[j]->exploring = true;
                                             printf("[APP %5d] exploring %d -> %d\n", apps_sorted[j]->pid,
                                                     per_app_cpu_budget[j], guess);
@@ -880,6 +882,7 @@ int main(int argc, char *argv[])
                                  * Introduce random disturbances.
                                  */
                                 int guess = per_app_cpu_budget[j] + guess_optimization();
+                                guess = MAX(MIN(guess, cpuinfo->total_cpus), SAM_MIN_CONTEXTS);
                                 apps_sorted[j]->exploring = true;
                                 printf("[APP %5d] random disturbance: %d -> %d\n", apps_sorted[j]->pid,
                                         per_app_cpu_budget[j], guess);
@@ -963,6 +966,9 @@ int main(int argc, char *argv[])
                         int *candidates_map = new int[num_apps]();
                         int num_candidates = 0;
                         int *spare_cores = new int[num_apps]();
+                        struct appinfo **spare_candidates = new struct appinfo*[num_apps]();
+                        int *spare_candidates_map = new int[num_apps]();
+                        int num_spare_candidates = 0;
 
                         printf("Application %d needs %d more hardware contexts.\n", j, needs_more[j]);
 
@@ -982,10 +988,16 @@ int main(int argc, char *argv[])
                                 spare_cores[l] = extra_perf / (double) curr_perf * curr_alloc_len_l;
                             }
 
-                            if (apps_sorted[l]->times_allocated > 0 && spare_cores[l] > 0) {
-                                candidates[num_candidates] = apps_sorted[l];
-                                candidates_map[apps_sorted[l]->appno] = l;
-                                num_candidates++;
+                            if (apps_sorted[l]->times_allocated > 0) {
+                                if (spare_cores[l] > 0) {
+                                    spare_candidates[num_spare_candidates] = apps_sorted[l];
+                                    spare_candidates_map[apps_sorted[l]->appno] = l;
+                                    num_spare_candidates++;
+                                } else {
+                                    candidates[num_candidates] = apps_sorted[l];
+                                    candidates_map[apps_sorted[l]->appno] = l;
+                                    num_candidates++;
+                                }
                             }
                         }
 
@@ -993,7 +1005,7 @@ int main(int argc, char *argv[])
                          * It's impossible for us to have less than the fair share available
                          * without there being at least one other application.
                          */
-                        assert(num_candidates > 0);
+                        assert(num_candidates + num_spare_candidates > 0);
 
                         /*
                          * Sort by efficiency.
@@ -1001,9 +1013,28 @@ int main(int argc, char *argv[])
                         int met = EXTRA_METRIC_IpCOREpS;
                         qsort_r(candidates, num_candidates, sizeof *candidates,
                                 &compare_apps_by_extra_metric_desc, (void *) &met);
+                        qsort_r(spare_candidates, num_spare_candidates, sizeof *spare_candidates,
+                                &compare_apps_by_extra_metric_desc, (void *) &met);
 
                         /*
                          * Start by taking away contexts from the least efficient applications.
+                         */
+                        for (int l = num_spare_candidates - 1; l > 0 && needs_more[j] > 0; --l) {
+                            int m = spare_candidates_map[spare_candidates[l]->appno];
+
+                            for (int n = 0; n < spare_cores[m]; ++n) {
+                                int cpu = per_app_cpu_orders[m][per_app_cpu_budget[m] - 1];
+
+                                CPU_CLR_S(cpu, rem_cpus_sz, new_cpusets[m]);
+                                CPU_SET_S(cpu, rem_cpus_sz, new_cpusets[j]);
+                                per_app_cpu_budget[m]--;
+                                per_app_cpu_budget[j]++;
+                                needs_more[j]--;
+                            }
+                        }
+
+                        /* 
+                         * If there were no candidates with spares, take from other applications.
                          */
                         for (int l = num_candidates - 1; l > 0 && needs_more[j] > 0; --l) {
                             int m = candidates_map[candidates[l]->appno];
@@ -1022,6 +1053,8 @@ int main(int argc, char *argv[])
                         delete[] spare_cores;
                         delete[] candidates;
                         delete[] candidates_map;
+                        delete[] spare_candidates;
+                        delete[] spare_candidates_map;
                     }
                 }
             }
