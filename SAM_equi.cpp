@@ -427,10 +427,11 @@ void PerfData::printCounters(int index)
     active = 0;
 
     for (i = 0; i < num; i++) {
+        options->counters[i].val += options->counters[i].delta;
         if (PRINT_COUNT) 
-            printf("%20s: %'20" PRIu64 " %'20" PRIu64 " %s (%.2f%% scaling, ena=%'" PRIu64 ", run=%'" PRIu64 ")\n",
+            printf("%20s: %'20" PRIu64 " %'20" PRIu64 " (%.2f%% scaling, ena=%'" PRIu64 ", run=%'" PRIu64 ")\n",
                     map_counter_to_event[i] == -1 ? "??" : event_names[map_counter_to_event[i]],
-                    options->counters[i].val, options->counters[i].delta, options->counters[i].name,
+                    options->counters[i].val, options->counters[i].delta,
                     (1.0 - options->counters[i].ratio) * 100.0, options->counters[i].auxval1,
                     options->counters[i].auxval2);
         bottleneck[i] = 0;
