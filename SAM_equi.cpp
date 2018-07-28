@@ -271,7 +271,10 @@ static void unmanage(pid_t pid, pid_t app_pid)
 
         CPU_FREE(anode->cpuset[0]);
         CPU_FREE(anode->cpuset[1]);
+        anode->cpuset[0] = NULL;
+        anode->cpuset[1] = NULL;
         free(anode->perf_history);
+        anode->perf_history = NULL;
         free(anode);
     }
 }
@@ -842,7 +845,7 @@ RESUME:
             for (int j = range_ends[i]; j < range_ends[i + 1]; ++j) {
                 const int curr_alloc_len = CPU_COUNT_S(rem_cpus_sz, apps_sorted[j]->cpuset[0]);
 
-                per_app_cpu_budget[j] = MIN((int) apps_sorted[j]->metric[METRIC_ACTIVE], fair_share);
+                per_app_cpu_budget[j] = MIN((int) apps_sorted[j]->bottleneck[METRIC_ACTIVE], fair_share);
 
                 /*
                  * If this app has already been given an allocation, then we can compute history
@@ -938,6 +941,10 @@ RESUME:
                 }
 
                 int diff = initial_remaining_cpus - per_app_cpu_budget[j];
+                printf("[APP %d] Requiring %d / %d remaining CPUs\n", 
+                        apps_sorted[j]->pid,
+                        per_app_cpu_budget[j],
+                        initial_remaining_cpus);
                 needs_more[j] = MAX(-diff, 0);
                 initial_remaining_cpus = MAX(diff, 0);
             }
