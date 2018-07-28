@@ -59,7 +59,6 @@ using std::vector;
 #define SHAR_COHERENCE_THRESH   550000
 #define SHAR_HCOH_THRESH        1100000
 #define SHAR_REMOTE_THRESH      2700000
-#define SHAR_CYCLES             2200000000.0
 #define SHAR_IPC_THRESH         700
 #define SHAR_COH_IND            (SHAR_COHERENCE_THRESH / 2)
 #define SHAR_PHY_CORE           10
@@ -476,7 +475,7 @@ void PerfData::printCounters(int index)
     }
 
     i = 2; // Mem
-    long tempvar = ((SHAR_CYCLES * options->counters[8].delta) / (options->counters[0].delta + 1));
+    long tempvar = (((double) cpuinfo->clock_rate * options->counters[8].delta) / (options->counters[0].delta + 1));
     if (tempvar > thresh_pt[i]) {
         val[i] = tempvar;
         bottleneck[i] = 1;
@@ -486,7 +485,7 @@ void PerfData::printCounters(int index)
     }
 
     i = 3; // snp
-    tempvar = ((SHAR_CYCLES * (options->counters[7].delta -
+    tempvar = (((double) cpuinfo->clock_rate * (options->counters[7].delta -
                                (options->counters[6].delta + options->counters[5].delta))) /
                (options->counters[0].delta + 1));
     if (tempvar > thresh_pt[i]) {
@@ -498,7 +497,7 @@ void PerfData::printCounters(int index)
     }
 
     i = 4; // cross soc
-    tempvar = ((SHAR_CYCLES * options->counters[9].delta) / (options->counters[0].delta + 1));
+    tempvar = (((double) cpuinfo->clock_rate * options->counters[9].delta) / (options->counters[0].delta + 1));
     if (tempvar > thresh_pt[i]) {
         val[i] = tempvar;
         bottleneck[i] = 1;
