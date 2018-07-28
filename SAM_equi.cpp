@@ -869,10 +869,10 @@ int main(int argc, char *argv[])
                                             int guess = per_app_cpu_budget[j] + guess_optimization();
                                             guess = MAX(MIN(guess, cpuinfo->total_cpus), SAM_MIN_CONTEXTS);
                                             apps_sorted[j]->exploring = true;
-                                            printf("[APP %5d] exploring %d -> %d\n", apps_sorted[j]->pid,
-                                                    per_app_cpu_budget[j], guess);
                                             per_app_cpu_budget[j] = guess;
                                         }
+                                        printf("[APP %5d] exploring %d -> %d\n", apps_sorted[j]->pid,
+                                                curr_alloc_len, per_app_cpu_budget[j]);
                                     } else {
                                         apps_sorted[j]->exploring = false;
                                     }
@@ -885,9 +885,9 @@ int main(int argc, char *argv[])
                                 int guess = per_app_cpu_budget[j] + guess_optimization();
                                 guess = MAX(MIN(guess, cpuinfo->total_cpus), SAM_MIN_CONTEXTS);
                                 apps_sorted[j]->exploring = true;
-                                printf("[APP %5d] random disturbance: %d -> %d\n", apps_sorted[j]->pid,
-                                        per_app_cpu_budget[j], guess);
                                 per_app_cpu_budget[j] = guess;
+                                printf("[APP %5d] random disturbance: %d -> %d\n", apps_sorted[j]->pid,
+                                        curr_alloc_len, per_app_cpu_budget[j]);
                             }
                         }
 
