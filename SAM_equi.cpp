@@ -1107,7 +1107,8 @@ int main(int argc, char *argv[])
                             memcpy(apps_sorted[j]->cpuset[0], new_cpusets[j], rem_cpus_sz);
 
                             apps_sorted[j]->times_allocated++;
-                            apps_sorted[j]->curr_fair_share = mybudget_l;
+                            if (mybudget_l == fair_share)
+                                apps_sorted[j]->curr_fair_share = mybudget_l;
                             printf("\t\tset CPU budget to %s\n", buf);
                         }
                     }
