@@ -73,8 +73,10 @@ using std::vector;
 
 // Will be initialized anyway
 int num_counter_orders = 6;
-
 int random_seed = 0xFACE;
+
+const char *cgroot = "/sys/fs/cgroup";
+const char *cntrlr = "cpuset";
 
 struct perf_counter {
     char name[128];
@@ -240,6 +242,15 @@ static void manage(pid_t pid, pid_t app_pid, int appno_in)
         printf("Managing new application %d\n", app_pid);
     } else
         apps_array[app_pid]->refcount++;
+
+    /* add this new task to the cgroup */
+    char cg_name[256];
+
+    snprintf(cg_name, sizeof cg_name, "sam/app-%d", app_pid);
+    if (cg_write_string(cgroot, cntrlr, cg_name, "tasks", "%d", pid) != 0) {
+        fprintf(stderr, "Failed to add task %d to %s: %s\n", pid, cg_name,
+                strerror(errno));
+    }
 }
 
 static void unmanage(pid_t pid, pid_t app_pid)
@@ -551,8 +562,6 @@ int main(int argc, char *argv[])
     std::map<int, PerfData *>::iterator perfiter;
     int appiter = 0;
     DIR *dr;
-    const char *cgroot = "/sys/fs/cgroup";
-    const char *cntrlr = "cpuset";
 
     setlocale(LC_ALL, "");
 
