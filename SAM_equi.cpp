@@ -724,7 +724,8 @@ int main(int argc, char *argv[])
             an->metric[METRIC_MEM] = an->value[8];
             an->metric[METRIC_INTRA] = an->value[7] - (an->value[5] + an->value[6]);
             an->metric[METRIC_INTER] = an->value[9];
-            an->extra_metric[EXTRA_METRIC_IpCOREpS] = an->value[1] / CPU_COUNT_S(CPU_ALLOC_SIZE(cpuinfo->total_cpus), an->cpuset[0]);
+            if (an->times_allocated > 0)
+                an->extra_metric[EXTRA_METRIC_IpCOREpS] = an->value[1] / CPU_COUNT_S(CPU_ALLOC_SIZE(cpuinfo->total_cpus), an->cpuset[0]);
 
             if (!(an->ts.tv_sec == 0 && an->ts.tv_nsec == 0)) {
                 struct timespec diff_ts;
