@@ -220,14 +220,6 @@ void deriveAppStatistics(int num)
         i = 4;
         apps[appiter].metric[i] = apps[appiter].value[9];
         apps[appiter].pid = appIDmap[appiter];
-
-        for (i = 0; i < ordernum; i++) {
-            if (apps[appiter].bottleneck[counter_order[i]] > 0)
-                std::cout << "App: " << appiter + 1 << '(' << apps[appiter].pid
-                          << ") has bottleneck: " << counter_order[i]
-                          << " with metric: " << apps[appiter].metric[counter_order[i]] << '\n';
-            // Do the appropriate moving here. Do not move if already placed properly
-        }
     }
 
     for (struct appinfo *an = apps_list; an; an = an->next) {
