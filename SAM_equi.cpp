@@ -929,6 +929,13 @@ int main(int argc, char *argv[])
                     /*
                      * Make sure we have enough CPUs to give the budget.
                      */
+                    if (initial_remaining_cpus > 0 && needs_more[j] > 0) {
+                        int added = MIN(needs_more[j], initial_remaining_cpus);
+                        initial_remaining_cpus -= added;
+                        needs_more[j] -= added;
+                        per_app_cpu_budget[j] += added;
+                    }
+
                     if (needs_more[j] > 0) {
                         struct appinfo **candidates = new struct appinfo*[num_apps]();
                         int *candidates_map = new int[num_apps]();
@@ -1019,7 +1026,7 @@ int main(int argc, char *argv[])
                                     }
                                 }
                             } while (old_cpu_budget_j < per_app_cpu_budget[j]);
-
+                            
                             for (int l = 0; l < num_apps; ++l) {
                                 if (amt_taken[l] > 0)
                                     printf("[APP %5d] took %d contexts from APP %5d\n", apps_sorted[j]->pid,
