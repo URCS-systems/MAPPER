@@ -975,6 +975,8 @@ int main(int argc, char *argv[])
                          * The one case is when the other applications are new.
                          */
                         if (num_candidates + num_spare_candidates > 0) {
+                            int *amt_taken = new int[num_apps]();
+
                             /*
                              * Sort by efficiency.
                              */
@@ -987,9 +989,8 @@ int main(int argc, char *argv[])
                             /*
                              * Start by taking away contexts from the least efficient applications.
                              */
-                            for (int l = num_spare_candidates - 1; l > 0 && needs_more[j] > 0; --l) {
+                            for (int l = num_spare_candidates - 1; l >= 0 && needs_more[j] > 0; --l) {
                                 int m = spare_candidates_map[spare_candidates[l]->appno];
-                                int amt_taken = 0;
 
                                 for (int n = 0; n < spare_cores[m] 
                                         && per_app_cpu_budget[m] > SAM_MIN_CONTEXTS
@@ -997,35 +998,41 @@ int main(int argc, char *argv[])
                                     per_app_cpu_budget[m]--;
                                     per_app_cpu_budget[j]++;
                                     needs_more[j]--;
-                                    amt_taken++;
+                                    amt_taken[m]++;
                                 }
-
-                                if (amt_taken > 0)
-                                    printf("[APP %5d] took %d contexts from APP %5d\n", apps_sorted[j]->pid,
-                                            amt_taken, apps_sorted[m]->pid);
                             }
 
                             /* 
                              * If there were no candidates with spares, take from other applications.
                              */
-                            for (int l = num_candidates - 1; l > 0 && needs_more[j] > 0; --l) {
-                                int m = candidates_map[candidates[l]->appno];
-                                int amt_taken = 0;
+                            int old_cpu_budget_j;
+                            do {
+                                old_cpu_budget_j = per_app_cpu_budget[j];
+                                for (int l = num_candidates - 1; l >= 0 && needs_more[j] > 0; --l) {
+                                    int m = candidates_map[candidates[l]->appno];
 
-                                for (int n = 0; n < spare_cores[m]
-                                        && per_app_cpu_budget[m] > SAM_MIN_CONTEXTS
-                                        && needs_more[j] > 0; ++n) {
-                                    per_app_cpu_budget[m]--;
-                                    per_app_cpu_budget[j]++;
-                                    needs_more[j]--;
-                                    amt_taken++;
+                                    if (per_app_cpu_budget[m] > SAM_MIN_CONTEXTS) {
+                                        per_app_cpu_budget[m]--;
+                                        per_app_cpu_budget[j]++;
+                                        needs_more[j]--;
+                                        amt_taken[m]++;
+                                    }
                                 }
+                            } while (old_cpu_budget_j < per_app_cpu_budget[j]);
 
-                                if (amt_taken > 0)
+                            for (int l = 0; l < num_apps; ++l) {
+                                if (amt_taken[l] > 0)
                                     printf("[APP %5d] took %d contexts from APP %5d\n", apps_sorted[j]->pid,
-                                            amt_taken, apps_sorted[m]->pid);
+                                            amt_taken[l], apps_sorted[l]->pid);
                             }
+
+
+                            delete[] amt_taken;
                         }
+
+                        if (needs_more[j] > 0)
+                            printf("[APP %5d] could not find %d extra contexts\n", apps_sorted[j]->pid,
+                                    needs_more[j]);
 
                         delete[] spare_cores;
                         delete[] candidates;
@@ -1046,6 +1053,7 @@ int main(int argc, char *argv[])
                     new_cpuset = CPU_ALLOC(cpuinfo->total_cpus);
                     CPU_ZERO_S(rem_cpus_sz, new_cpuset);
 
+                    assert(per_app_cpu_budget[j] >= SAM_MIN_CONTEXTS);
 
                     if (i < num_counter_orders) {
                         int met = counter_order[i];
