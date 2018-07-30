@@ -431,9 +431,9 @@ void PerfData::printCounters(int index)
 
     for (i = 0; i < num; i++) {
         options->counters[i].val += options->counters[i].delta;
-        if (PRINT_COUNT) 
+        if (PRINT_COUNT && map_counter_to_event[i] != -1) 
             printf("%20s: %'20" PRIu64 " %'20" PRIu64 " (%.2f%% scaling, ena=%'" PRIu64 ", run=%'" PRIu64 ")\n",
-                    map_counter_to_event[i] == -1 ? "??" : event_names[map_counter_to_event[i]],
+                    event_names[map_counter_to_event[i]],
                     options->counters[i].val, options->counters[i].delta,
                     (1.0 - options->counters[i].ratio) * 100.0, options->counters[i].auxval1,
                     options->counters[i].auxval2);
