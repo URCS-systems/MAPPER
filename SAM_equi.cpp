@@ -918,17 +918,6 @@ int main(int argc, char *argv[])
                                         curr_alloc_len, per_app_cpu_budget[j]);
                             }
                         }
-
-                        /*
-                         * If we're the last application, then we get the remaining cores
-                         * nobody wanted.
-                         *
-                         * TODO: move this into IPC-bottleneck budgeting
-                         */
-                        /*
-                        if (j == num_apps - 1)
-                            per_app_cpu_budget[j] += div(cpuinfo->total_cpus, num_apps).rem;
-                            */
                     } else {
                         /*
                          * If this app has never been given an allocation, the first allocation we should 
