@@ -399,16 +399,16 @@ void PerfData::printCounters(int index)
     
 
     const int map_counter_to_event[MAX_COUNTERS] = {
-        [0] = 0,
-        [1] = 1,
+        [0] = EVENT_UNHALTED_CYCLES,
+        [1] = EVENT_INSTRUCTIONS,
         [2] = -1,
         [3] = -1,
         [4] = -1,
-        [5] = 6,
-        [6] = 7,
-        [7] = 5,
-        [8] = 4,
-        [9] = 2
+        [5] = EVENT_L3_MISSES,
+        [6] = EVENT_L3_HIT,
+        [7] = EVENT_L2_MISSES,
+        [8] = EVENT_LLC_MISSES,
+        [9] = EVENT_REMOTE_HITM
     };
 
     if (PRINT_COUNT) // set to false in Macro to disable
