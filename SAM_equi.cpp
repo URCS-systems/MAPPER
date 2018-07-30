@@ -71,6 +71,7 @@ using std::vector;
 
 #define PRINT_COUNT true
 
+#define HILL_CLIMBING false
 // Will be initialized anyway
 int num_counter_orders = 6;
 int random_seed = 0xFACE;
@@ -845,6 +846,32 @@ int main(int argc, char *argv[])
                                 const int prev_alloc_len = CPU_COUNT_S(rem_cpus_sz, apps_sorted[j]->cpuset[1]);
                                 uint64_t prev_perf = apps_sorted[j]->perf_history[prev_alloc_len][0];
 
+                               /*Insert Hill Climbing logic here, if curr_perf is greater than pref_perf then keep on going until performance decreases, then stop*/
+
+                                /*Core logic remains the same*/
+                          	 if(HILL_CLIMBING) {
+
+				 	  if(curr_perf > prev_perf && (curr_perf -prev_perf) / (double) prev_perf >= SAM_PERF_THRESH && apps_sorted[j]->exploring)  {
+
+                                              //keep on going in this direction
+				            if (prev_alloc_len < curr_alloc_len)
+						 per_app_cpu_budget[j]=MIN(per_app_cpu_budget[j] + SAM_PERF_STEP, cpuinfo->total_cpus);
+					     else
+						  per_app_cpu_budget[j]=MAX(per_app_cpu_budget[j] - SAM_PERF_STEP, cpuinfo->total_cpus);   
+                                       
+				  	   } else {
+                                                      if(curr_perf < prev_perf && (prev_perf -curr_perf) / (double) prev_perf >= SAM_PERF_THRESH)
+						      {  //revert to previous configuration as stop exploring (set exploring to some value)
+                                                          per_app_cpu_budget[j]=prev_alloc_len;
+                                                         //go back to previous perf configuration and stay there the entire time for the application execution
+                                                         apps_sorted[j]->exploring=false;
+							 //no random disturbance should be introduced
+						       }	      
+				         }	    
+
+                          	 } //if hill climbing close
+                         
+                             //Original decision making
                                 /*
                                  * Change requested resources.
                                  */
@@ -908,6 +935,7 @@ int main(int argc, char *argv[])
                         per_app_cpu_budget[j] = fair_share;
                     }
 
+                 // }//else of hill climbing
 
                     printf("[APP %d] Requiring %d / %d remaining CPUs\n", 
                             apps_sorted[j]->pid,
