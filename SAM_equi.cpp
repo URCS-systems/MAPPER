@@ -510,7 +510,7 @@ void PerfData::printCounters(int index)
 }
 void PerfData::readCounters(int index)
 {
-    printf("[APP %5d | TID %5d] readCounters():\n", app_pid, pid);
+    printf("[APP %6d | TID %5d] readCounters():\n", app_pid, pid);
     if (pid == 0) // options->pid
     {
         return;
@@ -899,7 +899,7 @@ int main(int argc, char *argv[])
                                             apps_sorted[j]->exploring = true;
                                             per_app_cpu_budget[j] = guess;
                                         }
-                                        printf("[APP %5d] exploring %d -> %d\n", apps_sorted[j]->pid,
+                                        printf("[APP %6d] exploring %d -> %d\n", apps_sorted[j]->pid,
                                                 curr_alloc_len, per_app_cpu_budget[j]);
                                     } else {
                                         apps_sorted[j]->exploring = false;
@@ -914,7 +914,7 @@ int main(int argc, char *argv[])
                                 guess = MAX(MIN(guess, cpuinfo->total_cpus), SAM_MIN_CONTEXTS);
                                 apps_sorted[j]->exploring = true;
                                 per_app_cpu_budget[j] = guess;
-                                printf("[APP %5d] random disturbance: %d -> %d\n", apps_sorted[j]->pid,
+                                printf("[APP %6d] random disturbance: %d -> %d\n", apps_sorted[j]->pid,
                                         curr_alloc_len, per_app_cpu_budget[j]);
                             }
                         }
@@ -928,7 +928,7 @@ int main(int argc, char *argv[])
 
                  // }//else of hill climbing
 
-                    printf("[APP %d] Requiring %d / %d remaining CPUs\n", 
+                    printf("[APP %6d] Requiring %d / %d remaining CPUs\n", 
                             apps_sorted[j]->pid,
                             per_app_cpu_budget[j],
                             initial_remaining_cpus);
@@ -964,7 +964,7 @@ int main(int argc, char *argv[])
                         int *spare_candidates_map = new int[num_apps]();
                         int num_spare_candidates = 0;
 
-                        printf("[APP %5d] requests %d more hardware contexts\n", apps_sorted[j]->pid, needs_more[j]);
+                        printf("[APP %6d] requests %d more hardware contexts\n", apps_sorted[j]->pid, needs_more[j]);
 
                         /*
                          * Find the least efficient application to steal CPUs from.
@@ -1048,7 +1048,7 @@ int main(int argc, char *argv[])
                             
                             for (int l = 0; l < num_apps; ++l) {
                                 if (amt_taken[l] > 0)
-                                    printf("[APP %5d] took %d contexts from APP %5d\n", apps_sorted[j]->pid,
+                                    printf("[APP %6d] took %d contexts from APP %6d\n", apps_sorted[j]->pid,
                                             amt_taken[l], apps_sorted[l]->pid);
                             }
 
@@ -1057,7 +1057,7 @@ int main(int argc, char *argv[])
                         }
 
                         if (needs_more[j] > 0)
-                            printf("[APP %5d] could not find %d extra contexts\n", apps_sorted[j]->pid,
+                            printf("[APP %6d] could not find %d extra contexts\n", apps_sorted[j]->pid,
                                     needs_more[j]);
 
                         delete[] spare_cores;
@@ -1133,11 +1133,11 @@ int main(int argc, char *argv[])
 
                     if (i < num_counter_orders) {
                         int met = counter_order[i];
-                        printf("\t[APP %5d] = %'" PRIu64 " (cpuset = %s)\n", apps_sorted[j]->pid,
+                        printf("\t[APP %6d] = %'" PRIu64 " (cpuset = %s)\n", apps_sorted[j]->pid,
                                apps_sorted[j]->metric[met],
                                intlist_to_string(intlist, intlist_l, buf, sizeof buf, ","));
                     } else {
-                        printf("\t[APP %5d] (cpuset = %s)\n", apps_sorted[j]->pid,
+                        printf("\t[APP %6d] (cpuset = %s)\n", apps_sorted[j]->pid,
                                intlist_to_string(intlist, intlist_l, buf, sizeof buf, ","));
                     }
 
