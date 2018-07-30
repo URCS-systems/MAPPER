@@ -1147,6 +1147,7 @@ int main(int argc, char *argv[])
 
                     /* set the cpuset */
                     if (mybudget_l > 0) {
+                        intlist_to_string(mybudget, mybudget_l, buf, sizeof buf, ",");
                         if (cg_write_intlist(cgroot, cntrlr, cg_name, "cpuset.cpus", mybudget,
                                              mybudget_l) != 0) {
                             fprintf(stderr, "\t\tfailed to set CPU budget to %s: %s\n", buf,
