@@ -34,6 +34,10 @@ modules.builtin
 *.gcno
 CVS
 
+sam-launch
+samd
+PerTask
+
 #
 # git files that we don't want to ignore even it they are dot-files
 #
