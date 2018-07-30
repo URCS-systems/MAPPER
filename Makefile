@@ -9,8 +9,8 @@ all: samd sam-launch PerTask
 samd: SAM_equi.cpp cpuinfo.o util.o budgets.o cgroup.o perfMulti/perThread_perf.o
 	$(CC) $(CFLAGS) -std=gnu++17 $^ -o $@ $(LDFLAGS)
 
-sam-launch: launch_wrapper.cpp cgroup.o util.o
-	$(CC) $(CFLAGS) -std=gnu++17 $^ -o $@ $(LDFLAGS)
+sam-launch: launcher.o cgroup.o util.o
+	$(CC) $(CFLAGS) -std=gnu11 $^ -o $@ $(LDFLAGS)
 
 PerTask: PerTask.c perf_util.o
 	$(CC) $(CFLAGS) -I/usr/include/perfmon $^ -o $@ $(LDFLAGS)
