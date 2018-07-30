@@ -139,6 +139,17 @@ struct appinfo {
     uint64_t bottleneck[N_METRICS];
     uint64_t value[MAX_COUNTERS];
     uint64_t refcount;
+
+    /**
+     * The current bottleneck for this application.
+     */
+    enum metric curr_bottleneck;
+
+    /**
+     * The previous bottleneck for this application.
+     */
+    enum metric prev_bottleneck;
+
     /**
      * The history of CPU sets for this application.
      * cpuset[0] is the latest CPU set.
@@ -1072,11 +1083,13 @@ int main(int argc, char *argv[])
                          * [met]
                          */
                         (*budgeter_functions[met])(apps_sorted[j]->cpuset[0], new_cpuset, 
-                                per_app_cpu_orders[j],
+                                per_app_cpu_orders[j], apps_sorted[j]->curr_bottleneck,
+                                apps_sorted[j]->prev_bottleneck,
                                 remaining_cpus, rem_cpus_sz, per_app_cpu_budget[j]);
                     } else {
                         budget_default(apps_sorted[j]->cpuset[0], new_cpuset, 
-                                per_app_cpu_orders[j],
+                                per_app_cpu_orders[j], apps_sorted[j]->curr_bottleneck,
+                                apps_sorted[j]->prev_bottleneck,
                                 remaining_cpus, rem_cpus_sz, per_app_cpu_budget[j]);
                     }
 
@@ -1134,6 +1147,8 @@ int main(int argc, char *argv[])
                             /* save history */
                             memcpy(apps_sorted[j]->cpuset[1], apps_sorted[j]->cpuset[0], rem_cpus_sz);
                             memcpy(apps_sorted[j]->cpuset[0], new_cpusets[j], rem_cpus_sz);
+                            apps_sorted[j]->prev_bottleneck = apps_sorted[j]->curr_bottleneck;
+                            apps_sorted[j]->curr_bottleneck = (enum metric) i;
 
                             apps_sorted[j]->times_allocated++;
                             if (mybudget_l == fair_share)

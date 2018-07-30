@@ -24,6 +24,8 @@ cpu_truncate(cpu_set_t *cpuset, int num_cpus, int max_set)
 void
 budget_collocate(cpu_set_t *old_cpuset, cpu_set_t *new_cpuset,
                  int *new_cpu_orders,
+                 enum metric curr_bottleneck,
+                 enum metric prev_bottleneck,
                  cpu_set_t *remaining_cpus, const size_t cpus_sz,
                  int per_app_cpu_budget)
 {
@@ -61,38 +63,42 @@ budget_collocate(cpu_set_t *old_cpuset, cpu_set_t *new_cpuset,
         i++;
     }
 
-    old_cpuset2 = CPU_ALLOC(cpuinfo->total_cpus);
-    CPU_ZERO_S(cpus_sz, old_cpuset2);
+    if (curr_bottleneck == prev_bottleneck) {
+        old_cpuset2 = CPU_ALLOC(cpuinfo->total_cpus);
+        CPU_ZERO_S(cpus_sz, old_cpuset2);
 
-    CPU_AND_S(cpus_sz, old_cpuset2, old_cpuset, remaining_cpus);
-    k = CPU_COUNT_S(cpus_sz, old_cpuset2);
-
-    if (k > per_app_cpu_budget) {
-        cpu_truncate(old_cpuset2, cpuinfo->total_cpus, per_app_cpu_budget);
+        CPU_AND_S(cpus_sz, old_cpuset2, old_cpuset, remaining_cpus);
         k = CPU_COUNT_S(cpus_sz, old_cpuset2);
-    }
 
-    for (int sock_id = 0; sock_id < cpuinfo->num_sockets; ++sock_id) {
-        for (int c = 0; c < cpuinfo->sockets[sock_id].num_cpus; ++c) {
-            struct cpu hw = cpuinfo->sockets[sock_id].cpus[c];
+        if (k > per_app_cpu_budget) {
+            cpu_truncate(old_cpuset2, cpuinfo->total_cpus, per_app_cpu_budget);
+            k = CPU_COUNT_S(cpus_sz, old_cpuset2);
+        }
 
-            if (CPU_ISSET_S(hw.tnumber, cpus_sz, old_cpuset2)) {
-                sockets_in_old++;
-                break;
+        for (int sock_id = 0; sock_id < cpuinfo->num_sockets; ++sock_id) {
+            for (int c = 0; c < cpuinfo->sockets[sock_id].num_cpus; ++c) {
+                struct cpu hw = cpuinfo->sockets[sock_id].cpus[c];
+
+                if (CPU_ISSET_S(hw.tnumber, cpus_sz, old_cpuset2)) {
+                    sockets_in_old++;
+                    break;
+                }
             }
         }
-    }
 
-    if (sockets_in_old <= i && k >= j) {
-        memcpy(new_cpuset, old_cpuset2, cpus_sz);
-    }
+        if (sockets_in_old <= i && k >= j) {
+            memcpy(new_cpuset, old_cpuset2, cpus_sz);
+        }
 
-    CPU_FREE(old_cpuset2);
+        CPU_FREE(old_cpuset2);
+    }
 }
 
 void
 budget_spread(cpu_set_t *old_cpuset, cpu_set_t *new_cpuset,
               int *new_cpu_orders,
+              enum metric curr_bottleneck,
+              enum metric prev_bottleneck,
               cpu_set_t *remaining_cpus, const size_t cpus_sz,
               int per_app_cpu_budget)
 {
@@ -141,38 +147,42 @@ budget_spread(cpu_set_t *old_cpuset, cpu_set_t *new_cpuset,
         s = (s + 1) % cpuinfo->num_sockets;
     }
 
-    old_cpuset2 = CPU_ALLOC(cpuinfo->total_cpus);
-    CPU_ZERO_S(cpus_sz, old_cpuset2);
+    if (curr_bottleneck == prev_bottleneck) {
+        old_cpuset2 = CPU_ALLOC(cpuinfo->total_cpus);
+        CPU_ZERO_S(cpus_sz, old_cpuset2);
 
-    CPU_AND_S(cpus_sz, old_cpuset2, old_cpuset, remaining_cpus);
-    k = CPU_COUNT_S(cpus_sz, old_cpuset2);
-
-    if (k > per_app_cpu_budget) {
-        cpu_truncate(old_cpuset2, cpuinfo->total_cpus, per_app_cpu_budget);
+        CPU_AND_S(cpus_sz, old_cpuset2, old_cpuset, remaining_cpus);
         k = CPU_COUNT_S(cpus_sz, old_cpuset2);
-    }
 
-    for (int sock_id = 0; sock_id < cpuinfo->num_sockets; ++sock_id) {
-        for (int c = 0; c < cpuinfo->sockets[sock_id].num_cpus; ++c) {
-            struct cpu hw = cpuinfo->sockets[sock_id].cpus[c];
+        if (k > per_app_cpu_budget) {
+            cpu_truncate(old_cpuset2, cpuinfo->total_cpus, per_app_cpu_budget);
+            k = CPU_COUNT_S(cpus_sz, old_cpuset2);
+        }
 
-            if (CPU_ISSET_S(hw.tnumber, cpus_sz, old_cpuset2)) {
-                sockets_in_old++;
-                break;
+        for (int sock_id = 0; sock_id < cpuinfo->num_sockets; ++sock_id) {
+            for (int c = 0; c < cpuinfo->sockets[sock_id].num_cpus; ++c) {
+                struct cpu hw = cpuinfo->sockets[sock_id].cpus[c];
+
+                if (CPU_ISSET_S(hw.tnumber, cpus_sz, old_cpuset2)) {
+                    sockets_in_old++;
+                    break;
+                }
             }
         }
-    }
 
-    if (i > sockets_in_old && j >= k) {
-        memcpy(new_cpuset, old_cpuset2, cpus_sz);
-    }
+        if (i > sockets_in_old && j >= k) {
+            memcpy(new_cpuset, old_cpuset2, cpus_sz);
+        }
 
-    CPU_FREE(old_cpuset2);
+        CPU_FREE(old_cpuset2);
+    }
 }
 
 void
 budget_no_hyperthread(cpu_set_t *old_cpuset, cpu_set_t *new_cpuset,
                       int *new_cpu_orders,
+                      enum metric curr_bottleneck,
+                      enum metric prev_bottleneck,
                       cpu_set_t *remaining_cpus, const size_t cpus_sz,
                       int per_app_cpu_budget)
 {
@@ -224,42 +234,46 @@ budget_no_hyperthread(cpu_set_t *old_cpuset, cpu_set_t *new_cpuset,
         s = (s + 1) % cpuinfo->num_sockets;
     }
 
-    old_cpuset2 = CPU_ALLOC(cpuinfo->total_cpus);
-    CPU_ZERO_S(cpus_sz, old_cpuset2);
+    if (curr_bottleneck == prev_bottleneck) {
+        old_cpuset2 = CPU_ALLOC(cpuinfo->total_cpus);
+        CPU_ZERO_S(cpus_sz, old_cpuset2);
 
-    CPU_AND_S(cpus_sz, old_cpuset2, old_cpuset, remaining_cpus);
-    m = CPU_COUNT_S(cpus_sz, old_cpuset2);
-
-    if (m > per_app_cpu_budget) {
-        cpu_truncate(old_cpuset2, cpuinfo->total_cpus, per_app_cpu_budget);
+        CPU_AND_S(cpus_sz, old_cpuset2, old_cpuset, remaining_cpus);
         m = CPU_COUNT_S(cpus_sz, old_cpuset2);
-    }
 
-    for (int sock_id = 0; sock_id < cpuinfo->num_sockets; ++sock_id) {
-        for (int c = 0; c < cpuinfo->sockets[sock_id].num_cpus; ++c) {
-            struct cpu hw = cpuinfo->sockets[sock_id].cpus[c];
+        if (m > per_app_cpu_budget) {
+            cpu_truncate(old_cpuset2, cpuinfo->total_cpus, per_app_cpu_budget);
+            m = CPU_COUNT_S(cpus_sz, old_cpuset2);
+        }
 
-            if (CPU_ISSET_S(hw.tnumber, cpus_sz, old_cpuset2)) {
-                ctxs_old2[sock_id] |= 1u << c;
+        for (int sock_id = 0; sock_id < cpuinfo->num_sockets; ++sock_id) {
+            for (int c = 0; c < cpuinfo->sockets[sock_id].num_cpus; ++c) {
+                struct cpu hw = cpuinfo->sockets[sock_id].cpus[c];
+
+                if (CPU_ISSET_S(hw.tnumber, cpus_sz, old_cpuset2)) {
+                    ctxs_old2[sock_id] |= 1u << c;
+                }
             }
         }
-    }
 
-    for (int l = 0; l < cpuinfo->num_sockets; ++l) {
-        i += __builtin_popcount(ctxs[l] & (ctxs[l] >> 1));
-        k += __builtin_popcount(ctxs_old2[l] & (ctxs_old2[l] >> 1));
-    }
+        for (int l = 0; l < cpuinfo->num_sockets; ++l) {
+            i += __builtin_popcount(ctxs[l] & (ctxs[l] >> 1));
+            k += __builtin_popcount(ctxs_old2[l] & (ctxs_old2[l] >> 1));
+        }
 
-    if (perf_loss_factor*(k - i) + (j - m) <= 0.f) {
-        memcpy(new_cpuset, old_cpuset2, cpus_sz);
-    }
+        if (perf_loss_factor*(k - i) + (j - m) <= 0.f) {
+            memcpy(new_cpuset, old_cpuset2, cpus_sz);
+        }
 
-    CPU_FREE(old_cpuset2);
+        CPU_FREE(old_cpuset2);
+    }
 }
 
 void
 budget_default(cpu_set_t *old_cpuset, cpu_set_t *new_cpuset,
                int *new_cpu_orders,
+               enum metric curr_bottleneck,
+               enum metric prev_bottleneck,
                cpu_set_t *remaining_cpus, const size_t cpus_sz,
                int per_app_cpu_budget)
 {
@@ -296,22 +310,24 @@ budget_default(cpu_set_t *old_cpuset, cpu_set_t *new_cpuset,
         i++;
     }
 
-    old_cpuset2 = CPU_ALLOC(cpuinfo->total_cpus);
-    CPU_ZERO_S(cpus_sz, old_cpuset2);
+    if (curr_bottleneck == prev_bottleneck) {
+        old_cpuset2 = CPU_ALLOC(cpuinfo->total_cpus);
+        CPU_ZERO_S(cpus_sz, old_cpuset2);
 
-    CPU_AND_S(cpus_sz, old_cpuset2, old_cpuset, remaining_cpus);
-    k = CPU_COUNT_S(cpus_sz, old_cpuset2);
-
-    if (k > per_app_cpu_budget) {
-        cpu_truncate(old_cpuset2, cpuinfo->total_cpus, per_app_cpu_budget);
+        CPU_AND_S(cpus_sz, old_cpuset2, old_cpuset, remaining_cpus);
         k = CPU_COUNT_S(cpus_sz, old_cpuset2);
-    }
 
-    if (k >= j) {
-        memcpy(new_cpuset, old_cpuset2, cpus_sz);
-    }
+        if (k > per_app_cpu_budget) {
+            cpu_truncate(old_cpuset2, cpuinfo->total_cpus, per_app_cpu_budget);
+            k = CPU_COUNT_S(cpus_sz, old_cpuset2);
+        }
 
-    CPU_FREE(old_cpuset2);
+        if (k >= j) {
+            memcpy(new_cpuset, old_cpuset2, cpus_sz);
+        }
+
+        CPU_FREE(old_cpuset2);
+    }
 }
 budgeter_t budgeter_functions[] = {
     [METRIC_INTER]       = &budget_collocate,

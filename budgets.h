@@ -7,6 +7,8 @@
 #endif
 #include <sched.h>
 
+#include "mapper.h"
+
 #if defined(__cplusplus)
 extern "C" {
 #endif
@@ -16,12 +18,16 @@ extern "C" {
  */
 typedef void (*budgeter_t)(cpu_set_t *old_cpuset, cpu_set_t *new_cpuset, 
                            int *new_cpu_orders,
+                           enum metric curr_bottleneck,
+                           enum metric prev_bottleneck,
                            cpu_set_t *remaining_cpus, const size_t cpus_sz,
                            int per_app_cpu_budget);
 
 void
 budget_default(cpu_set_t *old_cpuset, cpu_set_t *new_cpuset,
                int *new_cpu_orders,
+               enum metric curr_bottleneck,
+               enum metric prev_bottleneck,
                cpu_set_t *remaining_cpus, const size_t cpus_sz,
                int per_app_cpu_budget);
 
