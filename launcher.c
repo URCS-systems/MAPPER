@@ -58,14 +58,14 @@ int main(int argc, char *argv[])
             exit(EXIT_FAILURE);
         }
 
-        snprintf(cg_name, sizeof cg_name, "sam/app-%d", initial_pid);
+        snprintf(cg_name, sizeof cg_name, SAM_CGROUP_NAME "/app-%d", initial_pid);
         char *mems_string = NULL;
         char *cpus_string = NULL;
 
         if (cg_create_cgroup(cgroup_root, controller, cg_name) != 0 
-         || cg_read_string(cgroup_root, controller, "sam", "cpuset.mems", &mems_string) != 0
+         || cg_read_string(cgroup_root, controller, SAM_CGROUP_NAME, "cpuset.mems", &mems_string) != 0
          || cg_write_string(cgroup_root, controller, cg_name, "cpuset.mems", "%s", mems_string) != 0 
-         || cg_read_string(cgroup_root, controller, "sam", "cpuset.cpus", &cpus_string) != 0 
+         || cg_read_string(cgroup_root, controller, SAM_CGROUP_NAME, "cpuset.cpus", &cpus_string) != 0 
          || cg_write_string(cgroup_root, controller, cg_name, "cpuset.cpus", "%s", cpus_string) != 0
          || cg_write_string(cgroup_root, controller, cg_name, "tasks", "%d", initial_pid) != 0) {
             fprintf(stderr, "Failed to create/establish cgroup for process %d: %s\n", 

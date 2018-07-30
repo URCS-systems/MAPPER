@@ -272,7 +272,7 @@ static void manage(pid_t pid, pid_t app_pid)
     /* add this new task to the cgroup */
     char cg_name[256];
 
-    snprintf(cg_name, sizeof cg_name, "sam/app-%d", app_pid);
+    snprintf(cg_name, sizeof cg_name, SAM_CGROUP_NAME "/app-%d", app_pid);
     if (cg_write_string(cgroot, cntrlr, cg_name, "tasks", "%d", pid) != 0) {
         fprintf(stderr, "Failed to add task %d to %s: %s\n", pid, cg_name,
                 strerror(errno));
@@ -634,16 +634,16 @@ int main(int argc, char *argv[])
         /* create cgroup */
         char *mems_string = NULL;
         char *cpus_string = NULL;
-        if (cg_create_cgroup(cgroot, cntrlr, "sam") < 0 && errno != EEXIST) {
+        if (cg_create_cgroup(cgroot, cntrlr, SAM_CGROUP_NAME) < 0 && errno != EEXIST) {
             perror("Failed to create cgroup");
             init_error = -1;
             goto END;
         }
 
         if (cg_read_string(cgroot, cntrlr, ".", "cpuset.mems", &mems_string) < 0 ||
-            cg_write_string(cgroot, cntrlr, "sam", "cpuset.mems", "%s", mems_string) < 0 ||
+            cg_write_string(cgroot, cntrlr, SAM_CGROUP_NAME, "cpuset.mems", "%s", mems_string) < 0 ||
             cg_read_string(cgroot, cntrlr, ".", "cpuset.cpus", &cpus_string) < 0 ||
-            cg_write_string(cgroot, cntrlr, "sam", "cpuset.cpus", "%s", cpus_string) < 0) {
+            cg_write_string(cgroot, cntrlr, SAM_CGROUP_NAME, "cpuset.cpus", "%s", cpus_string) < 0) {
             perror("Failed to create cgroup");
             free(mems_string);
             free(cpus_string);
@@ -1134,7 +1134,7 @@ int main(int argc, char *argv[])
                     size_t intlist_l = 0;
                     char cg_name[256];
 
-                    snprintf(cg_name, sizeof cg_name, "sam/app-%d", apps_sorted[j]->pid);
+                    snprintf(cg_name, sizeof cg_name, SAM_CGROUP_NAME "/app-%d", apps_sorted[j]->pid);
                     cg_read_intlist(cgroot, cntrlr, cg_name, "cpuset.cpus", &intlist, &intlist_l);
 
                     cpuset_to_intlist(new_cpusets[j], cpuinfo->total_cpus, &mybudget, &mybudget_l);
@@ -1197,6 +1197,9 @@ int main(int argc, char *argv[])
     }
 
     std::cout << "Stopping .. \n";
+
+    if (cg_remove_cgroup(cgroot, cntrlr, SAM_CGROUP_NAME) != 0)
+        perror("Failed to remove cgroup");
 END:
     std::cout << " Exiting .. \n";
 }
