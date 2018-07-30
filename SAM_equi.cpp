@@ -17,16 +17,7 @@
 #include <sys/wait.h>
 #include <sys/resource.h>
 #include <unistd.h>
-
-#include <algorithm>
-#include <cmath>
-#include <fstream>
-#include <iostream>
-#include <map>
-#include <string>
-#include <thread>
-#include <utility>
-#include <vector>
+#include <math.h>
 
 #include <locale.h>
 #include <sched.h>
@@ -41,11 +32,6 @@
 #include "util.h"
 #include "perfMulti/perThread_perf.h"
 
-using namespace std;
-using std::string;
-using std::vector;
-
-#define MAX_GROUPS              10
 #define TOT_CPUS                16
 #define MAX_COUNTERS            50
 #define MAX_APPS                50
@@ -93,7 +79,6 @@ struct countervalues {
 };
 
 struct options_t {
-    const char *events[MAX_GROUPS];
     int num_groups;
     int format_group;
     int inherit;
@@ -392,7 +377,7 @@ void update_children(pid_t app_pid) {
 
 void PerfData::initialize(pid_t tid, pid_t app_tid)
 {
-    std::cout << "Performing init for new thread with TID: " << tid << std::endl;
+    printf("[PID %6d] performing init\n", tid);
     pid = tid;
     options = new options_t();
     options->countercount = 10;
@@ -472,7 +457,7 @@ void PerfData::printCounters(int index)
         bottleneck[i] = 1;
         if (apps_array[app_pid]) 
             apps_array[app_pid]->bottleneck[i] += 1;
-        std::cout << " Detected counter " << i << '\n';
+        printf("[PID %6d] detected counter %s\n", pid, metric_names[i]);
     }
 
     i = 2; // Mem
@@ -482,7 +467,7 @@ void PerfData::printCounters(int index)
         bottleneck[i] = 1;
         if (apps_array[app_pid]) 
             apps_array[app_pid]->bottleneck[i] += 1;
-        std::cout << " Detected counter " << i << '\n';
+        printf("[PID %6d] detected counter %s\n", pid, metric_names[i]);
     }
 
     i = 3; // snp
@@ -494,7 +479,7 @@ void PerfData::printCounters(int index)
         bottleneck[i] = 1;
         if (apps_array[app_pid]) 
             apps_array[app_pid]->bottleneck[i] += 1;
-        std::cout << " Detected counter " << i << '\n';
+        printf("[PID %6d] detected counter %s\n", pid, metric_names[i]);
     }
 
     i = 4; // cross soc
@@ -504,9 +489,8 @@ void PerfData::printCounters(int index)
         bottleneck[i] = 1;
         if (apps_array[app_pid]) 
             apps_array[app_pid]->bottleneck[i] += 1;
-        std::cout << " Detected counter " << i << '\n';
+        printf("[PID %6d] detected counter %s\n", pid, metric_names[i]);
     }
-    std::cout << "Updated the app arrays too \n";
 }
 void PerfData::readCounters(int index)
 {
@@ -539,18 +523,18 @@ void setup_file_limits()
 
     limit.rlim_cur = 65535;
     limit.rlim_max = 65535;
+    printf("Setting file limits:\n");
     if (setrlimit(RLIMIT_NOFILE, &limit) != 0) {
-        std::cout << "setrlimit() failed with errno=%d\n" << errno;
+        perror("setrlimit");
         exit(1);
     }
 
     if (getrlimit(RLIMIT_NOFILE, &limit) != 0) {
-        std::cout << "getrlimit() failed with errno=%d\n" << errno;
+        perror("getrlimit");
         exit(1);
     }
-    std::cout << "The soft limit is " << limit.rlim_cur << std::endl
-        << "The hard limit is " << limit.rlim_max << std::endl;
-    system("bash -c 'ulimit -a'"); // Just a test
+    printf("\tThe soft limit is %lu\n", limit.rlim_cur);
+    printf("\tThe hard limit is %lu\n", limit.rlim_max);
     return;
 }
 
@@ -590,7 +574,6 @@ int main(int argc, char *argv[])
         counter_order[ordernum++] = METRIC_MEM;
         counter_order[ordernum++] = METRIC_AVGIPC;
         num_counter_orders = ordernum;
-        std::cout << " Ordering of counters by priority: " << ordernum << std::endl;
 
         /* create array */
         FILE *pid_max_fp;
@@ -1187,10 +1170,12 @@ int main(int argc, char *argv[])
         sleep(1);
     }
 
-    std::cout << "Stopping .. \n";
+    printf("Stopping...\n");
 
     if (cg_remove_cgroup(cgroot, cntrlr, SAM_CGROUP_NAME) != 0)
         perror("Failed to remove cgroup");
 END:
-    std::cout << " Exiting .. \n";
+    printf("Exiting.\n");
+
+    return 0;
 }
