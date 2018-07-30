@@ -348,8 +348,12 @@ void update_children(pid_t app_pid) {
 
         snprintf(path, sizeof path, "/proc/%d/task", cur_pid);
 
-        if (!(dir = opendir(path)))
+        if (!(dir = opendir(path))) {
+            if (errno != ENOENT)
+                fprintf(stderr, "%s: could not open %s: %s\n", __func__, 
+                        path, strerror(errno));
             continue;
+        }
 
         while ((ent = readdir(dir))) {
             char *endptr;
@@ -373,8 +377,12 @@ void update_children(pid_t app_pid) {
 
             snprintf(path, sizeof path, "/proc/%d/task/%d/children", cur_pid, task);
 
-            if (!(children_f = fopen(path, "r")))
+            if (!(children_f = fopen(path, "r"))) {
+                if (errno != ENOENT)
+                    fprintf(stderr, "%s: could not open %s: %s\n", __func__,
+                            path, strerror(errno));
                 continue;
+            }
 
             while (fscanf(children_f, "%d", &npid) == 1)
                 frontier[frontier_l++] = npid;
@@ -665,7 +673,7 @@ int main(int argc, char *argv[])
             dr = opendir(SAM_RUN_DIR);
 
             if (dr == NULL) {
-                printf("Could not open " SAM_RUN_DIR);
+                perror("Could not open " SAM_RUN_DIR);
                 return 0;
             }
 
