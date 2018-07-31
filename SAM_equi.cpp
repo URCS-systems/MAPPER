@@ -66,7 +66,7 @@ const char *cgroot = "/sys/fs/cgroup";
 const char *cntrlr = "cpuset";
 
 int thresh_pt[N_METRICS];
-int counter_order[MAX_COUNTERS];
+enum metric counter_order[MAX_COUNTERS];
 int ordernum = 0;
 int init_thresholds = 0;
 
@@ -197,10 +197,21 @@ struct appinfo **apps_array;
 struct appinfo *apps_list;
 int num_apps = 0;
 
-static inline int guess_optimization(void) {
-    if (random() / (double) RAND_MAX < 0.5)
-        return -SAM_PERF_STEP;
-    return SAM_PERF_STEP;
+static inline int guess_optimization(const int budget, enum metric bottleneck) {
+    const int cpus_per_socket = cpuinfo->sockets[0].num_cpus;
+    int f = random() / (double) RAND_MAX < 0.5 ? -1 : 1;
+
+    if (bottleneck == METRIC_INTER || bottleneck == METRIC_MEM) {
+        if (budget % cpus_per_socket) {
+            int step = cpus_per_socket - (budget % cpus_per_socket);
+            if (f < 0)
+                step = -(cpus_per_socket - step);
+            return step;
+        }
+        return f * cpus_per_socket;
+    }
+
+    return f * SAM_PERF_STEP;
 }
 
 /*
@@ -896,7 +907,8 @@ int main(int argc, char *argv[])
                                              */
                                             per_app_cpu_budget[j] = prev_alloc_len;
                                         } else {
-                                            int guess = per_app_cpu_budget[j] + guess_optimization();
+                                            int guess = per_app_cpu_budget[j] + 
+                                                guess_optimization(per_app_cpu_budget[j], counter_order[i]);
                                             guess = MAX(MIN(guess, cpuinfo->total_cpus), SAM_MIN_CONTEXTS);
                                             apps_sorted[j]->exploring = true;
                                             per_app_cpu_budget[j] = guess;
@@ -912,7 +924,8 @@ int main(int argc, char *argv[])
                                 /*
                                  * Introduce random disturbances.
                                  */
-                                int guess = per_app_cpu_budget[j] + guess_optimization();
+                                int guess = per_app_cpu_budget[j] + 
+                                    guess_optimization(per_app_cpu_budget[j], counter_order[i]);
                                 guess = MAX(MIN(guess, cpuinfo->total_cpus), SAM_MIN_CONTEXTS);
                                 apps_sorted[j]->exploring = true;
                                 per_app_cpu_budget[j] = guess;
