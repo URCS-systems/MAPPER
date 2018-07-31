@@ -121,17 +121,6 @@ const char *metric_names[N_METRICS] = {
     [METRIC_INTER]      = "Inter-socket communication",
 };
 
-const char *event_names[EVENTS] = {
-    [EVENT_UNHALTED_CYCLES]     = "cycles (unhalted)",
-    [EVENT_INSTRUCTIONS]        = "instructions",
-    [EVENT_REMOTE_HITM]         = "remote-hitm",
-    [EVENT_REMOTE_DRAM]         = "remote-dram",
-    [EVENT_LLC_MISSES]          = "LLC misses",
-    [EVENT_L2_MISSES]           = "L2 misses",
-    [EVENT_L3_MISSES]           = "L3 misses",
-    [EVENT_L3_HIT]              = "L3 hit"
-};
-
 struct appinfo {
     pid_t pid; /* application PID */
     uint64_t metric[N_METRICS];

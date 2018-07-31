@@ -45,21 +45,23 @@ enum perf_event {
     EVENT_LLC_MISSES,
     EVENT_L2_MISSES,
     EVENT_L3_MISSES,
-    EVENT_L3_HIT
+    EVENT_L3_HIT,
+    N_EVENTS,
 };
+
+extern const char *event_names[];
 
 #define TIME_IN_MILLI_SEC                                                                          \
     250                // total measurement time per iteration is 4 times
                        // TIME_IN_MILLI_SEC(example 250 millisecond *4 = 1 second)
 #define NUM_THREAD 200 // Total Threads being monitored
 #define ITER 1         // Number of iterations
-#define EVENTS 8       // static as per code , don't change
 
 // Data structure to collect information per TID performance counters
 struct perfThread {
     pid_t tid[NUM_THREAD];
     int index_tid;
-    uint64_t event[NUM_THREAD][EVENTS];
+    uint64_t event[NUM_THREAD][N_EVENTS];
 };
 struct perfThread THREADS;
 
@@ -75,21 +77,21 @@ struct read_format {
 
 struct perf_stat {
     // values of event count
-    uint64_t val[EVENTS];
+    uint64_t val[N_EVENTS];
 
     // buffer for reading couple events together
-    char buf[EVENTS / 2][4096];
+    char buf[N_EVENTS / 2][4096];
     // read format pointers for each buffer (group of events), each group contains
     // two events
-    struct read_format *rf[EVENTS / 2];
+    struct read_format *rf[N_EVENTS / 2];
 
     struct perf_event_attr pea; // perf_event attribute
 
     // file descriptor returned for each perf_event_open call
-    int fd[EVENTS];
+    int fd[N_EVENTS];
 
     // id of each event
-    uint64_t id[EVENTS];
+    uint64_t id[N_EVENTS];
 };
 
 #if defined(__cplusplus)
@@ -100,7 +102,7 @@ extern uint64_t EVENT[];
 
 extern struct perf_stat *threads;
 
-void setPerfAttr(struct perf_event_attr pea, uint64_t EVENT, int group_fd, int *fd, uint64_t *id,
+void setPerfAttr(struct perf_event_attr *pea, enum perf_event event, int group_fd, int *fd, uint64_t *id,
                  int cpu, pid_t tid);
 
 void start_event(int fd);

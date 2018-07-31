@@ -4,9 +4,22 @@
 
 #include "perThread_perf.h"
 #include <stdbool.h>
+#include <assert.h>
+#include <errno.h>
 #define PRINT true
 
-uint64_t EVENT[8];
+uint64_t EVENT[N_EVENTS];
+
+const char *event_names[N_EVENTS] = {
+    [EVENT_UNHALTED_CYCLES]     = "cycles (unhalted)",
+    [EVENT_INSTRUCTIONS]        = "instructions",
+    [EVENT_REMOTE_HITM]         = "remote-hitm",
+    [EVENT_REMOTE_DRAM]         = "remote-dram",
+    [EVENT_LLC_MISSES]          = "LLC misses",
+    [EVENT_L2_MISSES]           = "L2 misses",
+    [EVENT_L3_MISSES]           = "L3 misses",
+    [EVENT_L3_HIT]              = "L3 hit"
+};
 
 struct perf_stat *threads = NULL;
 
@@ -18,72 +31,70 @@ static long perf_event_open(struct perf_event_attr *hw_event, pid_t pid, int cpu
     return ret;
 }
 
-void setPerfAttr(struct perf_event_attr pea, uint64_t EVENT, int group_fd, int *fd, uint64_t *id,
+void setPerfAttr(struct perf_event_attr *pea, enum perf_event event, int group_fd, int *fd, uint64_t *id,
                  int cpu, pid_t tid)
 {
 
-    memset(&pea, 0, sizeof(struct perf_event_attr)); // allocating memory
-    pea.type = PERF_TYPE_RAW;
-    pea.size = sizeof(struct perf_event_attr);
-    pea.config = EVENT;
-    pea.disabled = 1;
+    memset(pea, 0, sizeof *pea); // allocating memory
+    pea->type = PERF_TYPE_RAW;
+    pea->size = sizeof(struct perf_event_attr);
+    pea->config = EVENT[event];
+    pea->disabled = 1;
     // pea[cpu].exclude_kernel=1;
     // pea[cpu].exclude_hv=1;
-    pea.read_format = PERF_FORMAT_GROUP | PERF_FORMAT_ID;
-    (*fd) = perf_event_open(&pea, tid, cpu, group_fd,
-                            0); // group leader has group id -1
-    if ((*fd) == -1)  //Don't start orstopt read events on this
-        printf("Error! perf_event_open not set for TID:%d for event:%" PRIu64 "\n", tid, EVENT);
-     
-     if((*fd)!=-1)  
-     ioctl((*fd), PERF_EVENT_IOC_ID, id); // retrieve identifier for first counter
+    pea->read_format = PERF_FORMAT_GROUP | PERF_FORMAT_ID;
+    *fd = perf_event_open(pea, tid, cpu, group_fd, 0); // group leader has group id -1
+    if (*fd == -1)  //Don't start orstopt read events on this
+        fprintf(stderr, "Error! perf_event_open not set for TID %6d for event %s: %s\n", 
+                tid, event_names[event], strerror(errno));
+    else
+        ioctl(*fd, PERF_EVENT_IOC_ID, id); // retrieve identifier for first counter
 }
 
 void start_event(int fd)
 {
-    if(fd!=-1)	
-    { ioctl(fd, PERF_EVENT_IOC_RESET, PERF_IOC_FLAG_GROUP);
-     ioctl(fd, PERF_EVENT_IOC_ENABLE, PERF_IOC_FLAG_GROUP);
-     }
+    if (fd != -1) {
+        ioctl(fd, PERF_EVENT_IOC_RESET, PERF_IOC_FLAG_GROUP);
+        ioctl(fd, PERF_EVENT_IOC_ENABLE, PERF_IOC_FLAG_GROUP);
+    }
 }
 
 void stop_read_counters(struct read_format *rf, int fd, char *buf, int size, uint64_t *val1,
                         uint64_t *val2, uint64_t id1, uint64_t id2)
 {
-   if(fd!=-1)	
-   { 
-     ioctl(fd, PERF_EVENT_IOC_DISABLE, PERF_IOC_FLAG_GROUP);
-     read(fd, buf, size);
+    if (fd != -1) { 
+        ioctl(fd, PERF_EVENT_IOC_DISABLE, PERF_IOC_FLAG_GROUP);
+        read(fd, buf, size);
 
-    uint64_t i;
-    // read counter values
-       for (i = 0; i < (rf->nr); i++) {
-        if (rf->values[i].id == id1) (*val1) = rf->values[i].value;
+        uint64_t i;
+        // read counter values
+        for (i = 0; i < (rf->nr); i++) {
+            if (rf->values[i].id == id1) (*val1) = rf->values[i].value;
 
-        if (rf->values[i].id == id2) (*val2) = rf->values[i].value;
-         }
+            if (rf->values[i].id == id2) (*val2) = rf->values[i].value;
+        }
 
-   }
-   else //file descriptor was -1, hence no monitoring happened
-     {  //set these unmonitored event counts to 0
-          (*val1)=0;
-	  (*val2)=0;
+    }
+    else //file descriptor was -1, hence no monitoring happened
+    {  //set these unmonitored event counts to 0
+        (*val1)=0;
+        (*val2)=0;
 
-       }	     
+    }	     
     close(fd);
 }
 
 void initialize_events(void)
 {
 
-    EVENT[0] = 0x3c;   // UNHALTED_CORE_CYCLES
-    EVENT[1] = 0xc0;   // INSTRUCTIONS_RETIRED
-    EVENT[2] = 0x10d3; // REMOTE_HITM
-    EVENT[3] = 0x04d3; // REMOTE_DRAM
-    EVENT[4] = 0x412e; // LLC_MISSES
-    EVENT[5] = 0x10d1; // L2_MISSES
-    EVENT[6] = 0x04d1; // L3_MISSES
-    EVENT[7] = 0x20d1; // L3_HITS
+    EVENT[EVENT_UNHALTED_CYCLES] = 0x3c;
+    EVENT[EVENT_INSTRUCTIONS] = 0xc0;
+    EVENT[EVENT_REMOTE_HITM] = 0x10d3;
+    EVENT[EVENT_REMOTE_DRAM] = 0x04d3;
+    EVENT[EVENT_LLC_MISSES] = 0x412e;
+    EVENT[EVENT_L2_MISSES] = 0x10d1;
+    EVENT[EVENT_L3_MISSES] = 0x04d1;
+    EVENT[EVENT_L3_HIT] = 0x20d1;
 }
 
 void count_event_perfMultiplex(pid_t tid[], int index_tid)
@@ -102,21 +113,21 @@ void count_event_perfMultiplex(pid_t tid[], int index_tid)
         // initialize read format descriptor for each thread and all events for that
         // thread
         int j;
-        for (j = 0; j < (EVENTS / 2); j++)
+        for (j = 0; j < N_EVENTS / 2; j++)
             threads[i].rf[j] = (struct read_format *)(threads[i].buf[j]);
 
         // set up performance counters
-        for (j = 0; j < (EVENTS / 2); j++) {
-            setPerfAttr(threads[i].pea, EVENT[j * 2], -1, &(threads[i].fd[(j * 2)]),
+        for (j = 0; j < N_EVENTS / 2; j++) {
+            setPerfAttr(&threads[i].pea, j * 2, -1, &(threads[i].fd[(j * 2)]),
                         &(threads[i].id[(j * 2)]), -1,
                         tid[i]); // measure tid statistics on any cpu
-            setPerfAttr(threads[i].pea, EVENT[j * 2 + 1], threads[i].fd[(j * 2)],
+            setPerfAttr(&threads[i].pea, j * 2 + 1, threads[i].fd[(j * 2)],
                         &(threads[i].fd[(j * 2) + 1]), &(threads[i].id[(j * 2) + 1]), -1, tid[i]);
         }
     }
 
     int j;
-    for (j = 0; j < (EVENTS / 2); j++) {
+    for (j = 0; j < N_EVENTS / 2; j++) {
 
         // Start counting events for event atrribute one
         for (i = 0; i < index_tid; i++)
@@ -133,17 +144,6 @@ void count_event_perfMultiplex(pid_t tid[], int index_tid)
                                threads[i].id[(j * 2)], threads[i].id[(j * 2) + 1]);
         }
     } // for j close
-
-    /*
-         EVENT[0]=0x3c;           //UNHALTED_CORE_CYCLES
-         EVENT[1]=0xc0;           //INSTRUCTIONS_RETIRED
-         EVENT[2]=0x10d3;         //REMOTE_HITM
-         EVENT[3]=0x04d3;          //REMOTE_DRAM
-         EVENT[4]=0x412e;          //LLC_MISSES
-         EVENT[5]=0x10d1;         //L2_MISSES
-         EVENT[6]=0x04d1;         //L3_MISSES
-         EVENT[7]=0x20d1;          //L3_HITS
-    */
 }
 
 void displayTIDEvents(pid_t tid[], int index_tid)
@@ -156,7 +156,7 @@ void displayTIDEvents(pid_t tid[], int index_tid)
         THREADS.index_tid = index_tid;
 
         int j;
-        for (j = 0; j < (EVENTS); j++)
+        for (j = 0; j < N_EVENTS; j++)
             THREADS.event[i][j] = (threads[i].val[j] * 4);
 
         if (PRINT) {
@@ -206,7 +206,7 @@ void copyValues(pid_t tid[], int index_tid)
         THREADS.index_tid = index_tid;
 
         int j;
-        for (j = 0; j < (EVENTS); j++)
+        for (j = 0; j < N_EVENTS; j++)
             THREADS.event[i][j] = (threads[i].val[j]) * 4;
 
         /*	//FIND PerfData Instance of this particular TID and then populate
