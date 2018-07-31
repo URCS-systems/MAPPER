@@ -842,8 +842,8 @@ int main(int argc, char *argv[])
                             apps_sorted[j]->curr_fair_share = fair_share;
 
                         uint64_t curr_perf = apps_sorted[j]->perf_history[curr_alloc_len][0];
-						int prev_alloc_len;
-						uint64_t prev_perf;
+                        int prev_alloc_len;
+                        uint64_t prev_perf;
 
                         if (apps_sorted[j]->times_allocated > 1) {
                             /*
@@ -854,95 +854,95 @@ int main(int argc, char *argv[])
                             if (!CPU_EQUAL_S(rem_cpus_sz, apps_sorted[j]->cpuset[0], apps_sorted[j]->cpuset[1])) {
                                 prev_alloc_len = CPU_COUNT_S(rem_cpus_sz, apps_sorted[j]->cpuset[1]);
                                 prev_perf = apps_sorted[j]->perf_history[prev_alloc_len][0];
-							}
-							else {
-								prev_alloc_len = CPU_COUNT_S(rem_cpus_sz, apps_sorted[j]->prevset);
-								prev_perf = apps_sorted[j]->perf_history[prev_alloc_len][0];
-							}
-                                /* Insert Hill Climbing logic here, if curr_perf
-                                 * is greater than pref_perf then keep on going
-                                 * until performance decreases, then stop*/
+                            }
+                            else {
+                                prev_alloc_len = CPU_COUNT_S(rem_cpus_sz, apps_sorted[j]->prevset);
+                                prev_perf = apps_sorted[j]->perf_history[prev_alloc_len][0];
+                            }
+                            /* Insert Hill Climbing logic here, if curr_perf
+                             * is greater than pref_perf then keep on going
+                             * until performance decreases, then stop*/
 
-                                /* Core logic remains the same */
-							if (HILL_CLIMBING) {
-								if (curr_perf > prev_perf && (curr_perf -prev_perf) 
-										/ (double) prev_perf >= SAM_PERF_THRESH && apps_sorted[j]->exploring)  {
+                            /* Core logic remains the same */
+                            if (HILL_CLIMBING) {
+                                if (curr_perf > prev_perf && (curr_perf -prev_perf) 
+                                        / (double) prev_perf >= SAM_PERF_THRESH && apps_sorted[j]->exploring)  {
 
-									//keep on going in this direction
-									if (prev_alloc_len < curr_alloc_len)
-										per_app_cpu_budget[j]= MIN(per_app_cpu_budget[j] + SAM_PERF_STEP, cpuinfo->total_cpus);
-									else
-										per_app_cpu_budget[j]= MAX(per_app_cpu_budget[j] - SAM_PERF_STEP, cpuinfo->total_cpus);   
+                                    //keep on going in this direction
+                                    if (prev_alloc_len < curr_alloc_len)
+                                        per_app_cpu_budget[j]= MIN(per_app_cpu_budget[j] + SAM_PERF_STEP, cpuinfo->total_cpus);
+                                    else
+                                        per_app_cpu_budget[j]= MAX(per_app_cpu_budget[j] - SAM_PERF_STEP, cpuinfo->total_cpus);   
 
-								} else {
-									if (curr_perf < prev_perf && (prev_perf -curr_perf) / (double) prev_perf >= SAM_PERF_THRESH)
-									{  //revert to previous configuration as stop exploring (set exploring to some value)
-										per_app_cpu_budget[j]=prev_alloc_len;
-										//go back to previous perf configuration and stay there 
-										//the entire time for the application execution
-										apps_sorted[j]->exploring=false;
-										//no random disturbance should be introduced
-									}	      
-								}
-							}
-					 
-							/*
-							 * Original decision making:
-							 * Change requested resources.
-							 */
-							if (curr_perf > prev_perf 
-								&& (curr_perf - prev_perf) / (double) prev_perf >= SAM_PERF_THRESH
-								&& apps_sorted[j]->exploring) {
-								/* Keep going in the same direction. */
-								printf("[APP %6d] continuing in same direction \n", apps_sorted[j]->pid);
-								if (prev_alloc_len < curr_alloc_len)
-									per_app_cpu_budget[j] = MIN(per_app_cpu_budget[j] + SAM_PERF_STEP, cpuinfo->total_cpus);
-								else
-									per_app_cpu_budget[j] = MAX(per_app_cpu_budget[j] - SAM_PERF_STEP, SAM_MIN_CONTEXTS);
-							} else {
-								if (curr_perf < prev_perf
-									&& (prev_perf - curr_perf) / (double) prev_perf >= SAM_PERF_THRESH) {
-									if (apps_sorted[j]->exploring) {
-										/*
-										 * Revert to previous count if performance reduction was great enough.
-										 */
-										per_app_cpu_budget[j] = prev_alloc_len;
-									} else {
-										int guess = per_app_cpu_budget[j] + 
-											guess_optimization(per_app_cpu_budget[j], counter_order[i]);
-										guess = MAX(MIN(guess, cpuinfo->total_cpus), SAM_MIN_CONTEXTS);
-										apps_sorted[j]->exploring = true;
-										per_app_cpu_budget[j] = guess;
-									}
-									printf("[APP %6d] exploring %d -> %d\n", apps_sorted[j]->pid,
-											curr_alloc_len, per_app_cpu_budget[j]);
-								} else {
-									apps_sorted[j]->exploring = false;
-									printf("[APP %6d] exploring no more \n", apps_sorted[j]->pid);
-									if (random() / (double) RAND_MAX <= SAM_DISTURB_PROB) {
-										int guess = per_app_cpu_budget[j] + 
-											guess_optimization(per_app_cpu_budget[j], counter_order[i]);
-										guess = MAX(MIN(guess, cpuinfo->total_cpus), SAM_MIN_CONTEXTS);
-										apps_sorted[j]->exploring = true;
-										per_app_cpu_budget[j] = guess;
-										printf("[APP %6d] random disturbance: %d -> %d\n", apps_sorted[j]->pid,
-											curr_alloc_len, per_app_cpu_budget[j]);
-									}
-								}
-							}
-						} else if (!apps_sorted[j]->exploring 
-								&& random() / (double) RAND_MAX <= SAM_DISTURB_PROB) {
-							/*
-							 * Introduce random disturbances.
-							 */
-							int guess = per_app_cpu_budget[j] + 
-								guess_optimization(per_app_cpu_budget[j], counter_order[i]);
-							guess = MAX(MIN(guess, cpuinfo->total_cpus), SAM_MIN_CONTEXTS);
-							apps_sorted[j]->exploring = true;
-							per_app_cpu_budget[j] = guess;
-							printf("[APP %6d] random disturbance: %d -> %d\n", apps_sorted[j]->pid,
-									curr_alloc_len, per_app_cpu_budget[j]);
-						}
+                                } else {
+                                    if (curr_perf < prev_perf && (prev_perf -curr_perf) / (double) prev_perf >= SAM_PERF_THRESH)
+                                    {  //revert to previous configuration as stop exploring (set exploring to some value)
+                                        per_app_cpu_budget[j]=prev_alloc_len;
+                                        //go back to previous perf configuration and stay there 
+                                        //the entire time for the application execution
+                                        apps_sorted[j]->exploring=false;
+                                        //no random disturbance should be introduced
+                                    }	      
+                                }
+                            }
+
+                            /*
+                             * Original decision making:
+                             * Change requested resources.
+                             */
+                            if (curr_perf > prev_perf 
+                                    && (curr_perf - prev_perf) / (double) prev_perf >= SAM_PERF_THRESH
+                                    && apps_sorted[j]->exploring) {
+                                /* Keep going in the same direction. */
+                                printf("[APP %6d] continuing in same direction \n", apps_sorted[j]->pid);
+                                if (prev_alloc_len < curr_alloc_len)
+                                    per_app_cpu_budget[j] = MIN(per_app_cpu_budget[j] + SAM_PERF_STEP, cpuinfo->total_cpus);
+                                else
+                                    per_app_cpu_budget[j] = MAX(per_app_cpu_budget[j] - SAM_PERF_STEP, SAM_MIN_CONTEXTS);
+                            } else {
+                                if (curr_perf < prev_perf
+                                        && (prev_perf - curr_perf) / (double) prev_perf >= SAM_PERF_THRESH) {
+                                    if (apps_sorted[j]->exploring) {
+                                        /*
+                                         * Revert to previous count if performance reduction was great enough.
+                                         */
+                                        per_app_cpu_budget[j] = prev_alloc_len;
+                                    } else {
+                                        int guess = per_app_cpu_budget[j] + 
+                                            guess_optimization(per_app_cpu_budget[j], counter_order[i]);
+                                        guess = MAX(MIN(guess, cpuinfo->total_cpus), SAM_MIN_CONTEXTS);
+                                        apps_sorted[j]->exploring = true;
+                                        per_app_cpu_budget[j] = guess;
+                                    }
+                                    printf("[APP %6d] exploring %d -> %d\n", apps_sorted[j]->pid,
+                                            curr_alloc_len, per_app_cpu_budget[j]);
+                                } else {
+                                    apps_sorted[j]->exploring = false;
+                                    printf("[APP %6d] exploring no more \n", apps_sorted[j]->pid);
+                                    if (random() / (double) RAND_MAX <= SAM_DISTURB_PROB) {
+                                        int guess = per_app_cpu_budget[j] + 
+                                            guess_optimization(per_app_cpu_budget[j], counter_order[i]);
+                                        guess = MAX(MIN(guess, cpuinfo->total_cpus), SAM_MIN_CONTEXTS);
+                                        apps_sorted[j]->exploring = true;
+                                        per_app_cpu_budget[j] = guess;
+                                        printf("[APP %6d] random disturbance: %d -> %d\n", apps_sorted[j]->pid,
+                                                curr_alloc_len, per_app_cpu_budget[j]);
+                                    }
+                                }
+                            }
+                        } else if (!apps_sorted[j]->exploring 
+                                && random() / (double) RAND_MAX <= SAM_DISTURB_PROB) {
+                            /*
+                             * Introduce random disturbances.
+                             */
+                            int guess = per_app_cpu_budget[j] + 
+                                guess_optimization(per_app_cpu_budget[j], counter_order[i]);
+                            guess = MAX(MIN(guess, cpuinfo->total_cpus), SAM_MIN_CONTEXTS);
+                            apps_sorted[j]->exploring = true;
+                            per_app_cpu_budget[j] = guess;
+                            printf("[APP %6d] random disturbance: %d -> %d\n", apps_sorted[j]->pid,
+                                    curr_alloc_len, per_app_cpu_budget[j]);
+                        }
                     } else {
                         /*
                          * If this app has never been given an allocation, the first allocation we should 
@@ -953,7 +953,7 @@ int main(int argc, char *argv[])
                         printf("[APP %6d] Setting fair share \n", apps_sorted[j]->pid);
                     }
 
-                 // }//else of hill climbing
+                    // }//else of hill climbing
 
                     printf("[APP %6d] Requiring %d / %d remaining CPUs\n", 
                             apps_sorted[j]->pid,
@@ -964,8 +964,8 @@ int main(int argc, char *argv[])
                     needs_more[j] = MAX(-diff, 0);
                     initial_remaining_cpus = MAX(diff, 0);
                     per_app_cpu_budget[j] -= needs_more[j];
-                }
             }
+        }
 
             /*
              * Now we adjust the budgets to fit the resources.
