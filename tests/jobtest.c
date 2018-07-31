@@ -6,6 +6,7 @@
 #include <errno.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <signal.h>
 
 #define MAX_JOBS    10
 #define ARG_MAX     20
@@ -38,6 +39,12 @@ static int find_job_id_by_pid(pid_t pid) {
 }
 
 static pid_t run_job(struct job *jb) {
+    void (*old)(int);
+
+    old = signal(SIGTERM, SIG_DFL);
+    signal(SIGQUIT, SIG_DFL);
+    signal(SIGINT, SIG_DFL);
+
     jb->pid = fork();
 
     if (jb->pid == (pid_t) -1) {
@@ -48,12 +55,17 @@ static pid_t run_job(struct job *jb) {
     if (jb->pid == 0) {
         /* child */
         pid_t mypid = getpid();
+
         printf("[PID %6d] running %s ...\n", mypid, jb->argbuf);
         if (execvp(jb->argv[0], jb->argv) < 0) {
             fprintf(stderr, "failed to run %s: %s\n", jb->argbuf, strerror(errno));
             exit(EXIT_FAILURE);
         }
     }
+
+    signal(SIGTERM, old);
+    signal(SIGQUIT, old);
+    signal(SIGINT, old);
 
     return jb->pid;
 }
@@ -87,6 +99,10 @@ int main(int argc, char *argv[]) {
 
         char *nlptr = strchr(line, '\n');
         if (nlptr) *nlptr = '\0';
+
+        /* skip empty lines or comments */
+        if (*line == '\0' || *line == '\n' || *line == '#')
+            continue;
 
         jobs[num_jobs].argbuf = strdup(line);
         char *token = line;
@@ -125,7 +141,7 @@ int main(int argc, char *argv[]) {
         if (i == -1)
             continue;
         clock_gettime(CLOCK_MONOTONIC_RAW, &jobs[i].end);
-        jobs[i].pid = -1;
+        jobs[i].pid = 0;
     }
 
     printf("Summary:\n");
@@ -140,7 +156,7 @@ int main(int argc, char *argv[]) {
         }
 
         int n = 0;
-        printf(" %.45s:%n", jobs[i].argbuf, &n);
+        printf(" %.55s:%n", jobs[i].argbuf, &n);
         printf("%*lf s\n", 70 - n - 2,
                 diff_ts.tv_sec + (double) diff_ts.tv_nsec / 1e+9);
     }
