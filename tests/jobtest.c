@@ -79,7 +79,7 @@ int main(int argc, char *argv[]) {
     char *line = NULL;
     size_t sz = 0;
 
-    for (num_jobs = 0; getline(&line, &sz, input) >= 0; num_jobs++) {
+    for (num_jobs = 0; getline(&line, &sz, input) >= 0; ) {
         if (num_jobs >= MAX_JOBS) {
             printf("Too many jobs (%d).\n", num_jobs);
             break;
@@ -100,6 +100,7 @@ int main(int argc, char *argv[]) {
             jobs[num_jobs].argv[jobs[num_jobs].argc++] = strdup(token);
         }
         jobs[num_jobs].argv[jobs[num_jobs].argc++] = NULL;
+        num_jobs++;
     }
 
     free(line);
