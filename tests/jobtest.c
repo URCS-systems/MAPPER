@@ -25,10 +25,12 @@ struct job jobs[MAX_JOBS];
 void handle_quit(int sig) {
     printf("Received signal: %s\n", strsignal(sig));
     for (int i = 0; i < num_jobs; ++i)
-        kill(jobs[i].pid, SIGTERM);
+        if (jobs[i].pid != 0)
+            kill(jobs[i].pid, SIGTERM);
     sleep(1);
     for (int i = 0; i < num_jobs; ++i)
-        kill(jobs[i].pid, SIGKILL);
+        if (jobs[i].pid != 0)
+            kill(jobs[i].pid, SIGKILL);
 }
 
 static int find_job_id_by_pid(pid_t pid) {
