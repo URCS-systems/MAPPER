@@ -192,6 +192,7 @@ static inline int guess_optimization(const int budget, enum metric bottleneck) {
     int f = random() / (double) RAND_MAX < 0.5 ? -1 : 1;
 
     if (bottleneck == METRIC_INTER || bottleneck == METRIC_INTRA) {
+    	f = random() / (double) RAND_MAX < 0.8 ? -1 : 1;
         if (budget % cpus_per_socket) {
             int step = cpus_per_socket - (budget % cpus_per_socket);
             if (f < 0)
