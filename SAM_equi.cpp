@@ -144,7 +144,6 @@ struct appinfo {
      * cpuset[0] is the latest CPU set.
      */
     cpu_set_t *cpuset[2];
-	cpu_set_t *prevset;
     /**
      * This is the average performance for each CPU count.
      * The size of this array is equal to the total number of CPUs (cpuinfo->total_cpus) + 1.
@@ -257,7 +256,6 @@ static void manage(pid_t pid, pid_t app_pid)
         anode->next = apps_list;
         anode->cpuset[0] = CPU_ALLOC(cpuinfo->total_cpus);
         anode->cpuset[1] = CPU_ALLOC(cpuinfo->total_cpus);
-        anode->prevset = CPU_ALLOC(cpuinfo->total_cpus);
         anode->perf_history = (uint64_t (*)[2]) calloc(cpuinfo->total_cpus + 1, sizeof *anode->perf_history);
         if (apps_list) apps_list->prev = anode;
         apps_list = anode;
@@ -326,10 +324,8 @@ static void unmanage(pid_t pid, pid_t app_pid)
 
         CPU_FREE(anode->cpuset[0]);
         CPU_FREE(anode->cpuset[1]);
-        CPU_FREE(anode->prevset);
         anode->cpuset[0] = NULL;
         anode->cpuset[1] = NULL;
-        anode->prevset = NULL;
         free(anode->perf_history);
         anode->perf_history = NULL;
         free(anode);
@@ -826,13 +822,12 @@ int main(int argc, char *argv[])
                      * and excess cores.
                      */
                     if (apps_sorted[j]->times_allocated > SAM_INITIAL_ALLOCS) {
-                        /* save performance history */
+                        /* compute performance history */
                         uint64_t history[2];
                         memcpy(history, apps_sorted[j]->perf_history[curr_alloc_len], sizeof history);
                         history[1]++;
                         history[0] = apps_sorted[j]->extra_metric[EXTRA_METRIC_IPS] * (1/(double)history[1]) + 
                             history[0] * ((history[1] - 1)/(double)history[1]);
-                        memcpy(apps_sorted[j]->perf_history[curr_alloc_len], history, sizeof apps_sorted[j]->perf_history[curr_alloc_len]);
 
                         /*
                          * Change application's fair share count if the creation of new applications
@@ -842,24 +837,15 @@ int main(int argc, char *argv[])
                                 && apps_sorted[j]->perf_history[fair_share] != 0)
                             apps_sorted[j]->curr_fair_share = fair_share;
 
-                        uint64_t curr_perf = apps_sorted[j]->perf_history[curr_alloc_len][0];
-                        int prev_alloc_len;
-                        uint64_t prev_perf;
+                        uint64_t curr_perf = history[0];
 
                         if (apps_sorted[j]->times_allocated > 1) {
                             /*
                              * Compare current performance with previous performance, if this application
                              * has at least two items in history.
                              */
-
-                            if (!CPU_EQUAL_S(rem_cpus_sz, apps_sorted[j]->cpuset[0], apps_sorted[j]->cpuset[1])) {
-                                prev_alloc_len = CPU_COUNT_S(rem_cpus_sz, apps_sorted[j]->cpuset[1]);
-                                prev_perf = apps_sorted[j]->perf_history[prev_alloc_len][0];
-                            }
-                            else {
-                                prev_alloc_len = CPU_COUNT_S(rem_cpus_sz, apps_sorted[j]->prevset);
-                                prev_perf = apps_sorted[j]->perf_history[prev_alloc_len][0];
-                            }
+                            int prev_alloc_len = CPU_COUNT_S(rem_cpus_sz, apps_sorted[j]->cpuset[1]);
+                            uint64_t prev_perf = apps_sorted[j]->perf_history[prev_alloc_len][0];
                             /* Insert Hill Climbing logic here, if curr_perf
                              * is greater than pref_perf then keep on going
                              * until performance decreases, then stop*/
@@ -931,6 +917,9 @@ int main(int argc, char *argv[])
                                     }
                                 }
                             }
+
+                            /* save performance history */
+                            memcpy(apps_sorted[j]->perf_history[curr_alloc_len], history, sizeof apps_sorted[j]->perf_history[curr_alloc_len]);
                         } else if (!apps_sorted[j]->exploring 
                                 && random() / (double) RAND_MAX <= SAM_DISTURB_PROB) {
                             /*
@@ -950,7 +939,6 @@ int main(int argc, char *argv[])
                          * give it is the fair share.
                          */
                         per_app_cpu_budget[j] = fair_share;
-                        memcpy(apps_sorted[j]->prevset, apps_sorted[j]->cpuset[0], rem_cpus_sz);
                         printf("[APP %6d] Setting fair share \n", apps_sorted[j]->pid);
                     }
 
@@ -1180,10 +1168,13 @@ int main(int argc, char *argv[])
                                     strerror(errno));
                         } else {
                             /* save history */
-                            memcpy(apps_sorted[j]->cpuset[1], apps_sorted[j]->cpuset[0], rem_cpus_sz);
-                            memcpy(apps_sorted[j]->cpuset[0], new_cpusets[j], rem_cpus_sz);
-                            apps_sorted[j]->prev_bottleneck = apps_sorted[j]->curr_bottleneck;
-                            apps_sorted[j]->curr_bottleneck = (enum metric) i;
+                            if (!CPU_EQUAL_S(rem_cpus_sz, apps_sorted[j]->cpuset[0], new_cpusets[j])
+                                    || (enum metric) i != apps_sorted[j]->curr_bottleneck) {
+                                memcpy(apps_sorted[j]->cpuset[1], apps_sorted[j]->cpuset[0], rem_cpus_sz);
+                                memcpy(apps_sorted[j]->cpuset[0], new_cpusets[j], rem_cpus_sz);
+                                apps_sorted[j]->prev_bottleneck = apps_sorted[j]->curr_bottleneck;
+                                apps_sorted[j]->curr_bottleneck = (enum metric) i;
+                            }
 
                             apps_sorted[j]->times_allocated++;
                             if (mybudget_l == fair_share)
