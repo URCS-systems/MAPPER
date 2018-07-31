@@ -21,6 +21,15 @@ struct job {
 int num_jobs;
 struct job jobs[MAX_JOBS];
 
+void handle_quit(int sig) {
+    printf("Received signal: %s\n", strsignal(sig));
+    for (int i = 0; i < num_jobs; ++i)
+        kill(jobs[i].pid, SIGTERM);
+    sleep(1);
+    for (int i = 0; i < num_jobs; ++i)
+        kill(jobs[i].pid, SIGKILL);
+}
+
 static int find_job_id_by_pid(pid_t pid) {
     for (int i = 0; i < num_jobs; ++i)
         if (jobs[i].pid == pid)
@@ -96,6 +105,10 @@ int main(int argc, char *argv[]) {
     free(line);
 
     fclose(input);
+
+    signal(SIGTERM, &handle_quit);
+    signal(SIGQUIT, &handle_quit);
+    signal(SIGINT, &handle_quit);
 
     /* run all jobs */
     printf("Running %d jobs...\n", num_jobs);
