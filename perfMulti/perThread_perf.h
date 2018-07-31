@@ -50,6 +50,7 @@ enum perf_event {
 };
 
 extern const char *event_names[];
+extern uint64_t event_codes[];
 
 #define TIME_IN_MILLI_SEC                                                                          \
     250                // total measurement time per iteration is 4 times
@@ -98,8 +99,6 @@ struct perf_stat {
 extern "C" {
 #endif
 
-extern uint64_t EVENT[];
-
 extern struct perf_stat *threads;
 
 void setPerfAttr(struct perf_event_attr *pea, enum perf_event event, int group_fd, int *fd, uint64_t *id,
@@ -109,8 +108,6 @@ void start_event(int fd);
 
 void stop_read_counters(struct read_format *rf, int fd, char *buf, int size, uint64_t *val1,
                         uint64_t *val2, uint64_t id1, uint64_t id2);
-
-void initialize_events(void);
 
 void count_event_perfMultiplex(pid_t tid[], int index_tid);
 

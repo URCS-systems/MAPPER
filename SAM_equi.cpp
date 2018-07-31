@@ -572,7 +572,6 @@ int main(int argc, char *argv[])
 
     setup_file_limits();
     // Initialize what event we want
-    initialize_events();
 
     signal(SIGTERM, &sigterm_handler);
     signal(SIGQUIT, &sigterm_handler);

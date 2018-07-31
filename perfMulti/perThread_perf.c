@@ -8,7 +8,17 @@
 #include <errno.h>
 #define PRINT true
 
-uint64_t EVENT[N_EVENTS];
+uint64_t event_codes[N_EVENTS] = {
+    [EVENT_UNHALTED_CYCLES] = 0x3c,
+    [EVENT_INSTRUCTIONS]    = 0xc0,
+    [EVENT_REMOTE_HITM]     = 0x10d3,
+    [EVENT_REMOTE_DRAM]     = 0x04d3,
+    [EVENT_LLC_MISSES]      = 0x412e,
+    [EVENT_L2_MISSES]       = 0x10d1,
+    [EVENT_L3_MISSES]       = 0x04d1,
+    [EVENT_L3_HIT]          = 0x20d1,
+};
+
 
 const char *event_names[N_EVENTS] = {
     [EVENT_UNHALTED_CYCLES]     = "cycles (unhalted)",
@@ -38,7 +48,7 @@ void setPerfAttr(struct perf_event_attr *pea, enum perf_event event, int group_f
     memset(pea, 0, sizeof *pea); // allocating memory
     pea->type = PERF_TYPE_RAW;
     pea->size = sizeof(struct perf_event_attr);
-    pea->config = EVENT[event];
+    pea->config = event_codes[event];
     pea->disabled = 1;
     // pea[cpu].exclude_kernel=1;
     // pea[cpu].exclude_hv=1;
@@ -82,19 +92,6 @@ void stop_read_counters(struct read_format *rf, int fd, char *buf, int size, uin
 
     }	     
     close(fd);
-}
-
-void initialize_events(void)
-{
-
-    EVENT[EVENT_UNHALTED_CYCLES] = 0x3c;
-    EVENT[EVENT_INSTRUCTIONS] = 0xc0;
-    EVENT[EVENT_REMOTE_HITM] = 0x10d3;
-    EVENT[EVENT_REMOTE_DRAM] = 0x04d3;
-    EVENT[EVENT_LLC_MISSES] = 0x412e;
-    EVENT[EVENT_L2_MISSES] = 0x10d1;
-    EVENT[EVENT_L3_MISSES] = 0x04d1;
-    EVENT[EVENT_L3_HIT] = 0x20d1;
 }
 
 void count_event_perfMultiplex(pid_t tid[], int index_tid)
