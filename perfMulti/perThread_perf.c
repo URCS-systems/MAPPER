@@ -69,7 +69,7 @@ void start_event(int fd)
     }
 }
 
-void stop_read_counters(struct read_format *rf, int fd, char *buf, size_t size, uint64_t *val1,
+void stop_read_counters(struct read_format *rf, int fd, int fd2, char *buf, size_t size, uint64_t *val1,
                         uint64_t *val2, uint64_t id1, uint64_t id2)
 {
     if (fd != -1) { 
@@ -93,6 +93,7 @@ void stop_read_counters(struct read_format *rf, int fd, char *buf, size_t size, 
         *val2 = 0;
     }	     
     close(fd);
+    close(fd2);
 }
 
 void count_event_perfMultiplex(pid_t tid[], int index_tid)
@@ -135,7 +136,7 @@ void count_event_perfMultiplex(pid_t tid[], int index_tid)
         // stop counters and read counter values
         for (i = 0; i < index_tid; i++) {
             size_t size = sizeof threads[i].buf[j];
-            stop_read_counters(threads[i].rf[j], threads[i].fd[j * 2], threads[i].buf[j], size,
+            stop_read_counters(threads[i].rf[j], threads[i].fd[j * 2], threads[i].fd[j*2 + 1], threads[i].buf[j], size,
                                &threads[i].val[2 * j], &threads[i].val[2 * j + 1],
                                threads[i].id[j * 2], threads[i].id[j * 2 + 1]);
         }

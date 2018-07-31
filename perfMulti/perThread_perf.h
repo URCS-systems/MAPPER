@@ -105,7 +105,7 @@ void setPerfAttr(struct perf_event_attr *pea, enum perf_event event, int group_f
 
 void start_event(int fd);
 
-void stop_read_counters(struct read_format *rf, int fd, char *buf, size_t size, uint64_t *val1,
+void stop_read_counters(struct read_format *rf, int fd, int fd2, char *buf, size_t size, uint64_t *val1,
                         uint64_t *val2, uint64_t id1, uint64_t id2);
 
 void count_event_perfMultiplex(pid_t tid[], int index_tid);
