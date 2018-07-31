@@ -55,8 +55,9 @@ void setPerfAttr(struct perf_event_attr *pea, enum perf_event event, int group_f
     pea->read_format = PERF_FORMAT_GROUP | PERF_FORMAT_ID;
     *fd = perf_event_open(pea, tid, cpu, group_fd, 0); // group leader has group id -1
     if (*fd == -1)  //Don't start orstopt read events on this
-        fprintf(stderr, "Error! perf_event_open not set for TID %6d for event %s: %s\n", 
-                tid, event_names[event], strerror(errno));
+		*fd = -1;
+        // fprintf(stderr, "Error! perf_event_open not set for TID %6d for event %s: %s\n", 
+        //        tid, event_names[event], strerror(errno));
     else
         ioctl(*fd, PERF_EVENT_IOC_ID, id); // retrieve identifier for first counter
 }
