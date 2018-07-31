@@ -49,9 +49,6 @@ enum perf_event {
     N_EVENTS,
 };
 
-extern const char *event_names[];
-extern uint64_t event_codes[];
-
 #define TIME_IN_MILLI_SEC                                                                          \
     250                // total measurement time per iteration is 4 times
                        // TIME_IN_MILLI_SEC(example 250 millisecond *4 = 1 second)
@@ -99,6 +96,8 @@ struct perf_stat {
 extern "C" {
 #endif
 
+extern const char *event_names[];
+extern uint64_t event_codes[];
 extern struct perf_stat *threads;
 
 void setPerfAttr(struct perf_event_attr *pea, enum perf_event event, int group_fd, int *fd, uint64_t *id,
