@@ -33,7 +33,7 @@ const char *event_names[N_EVENTS] = {
 
 struct perf_stat *threads = NULL;
 
-static long perf_event_open(struct perf_event_attr *hw_event, pid_t pid, int cpu, int group_fd,
+static int perf_event_open(struct perf_event_attr *hw_event, pid_t pid, int cpu, int group_fd,
                             unsigned long flags)
 {
     int ret;
@@ -69,7 +69,7 @@ void start_event(int fd)
     }
 }
 
-void stop_read_counters(struct read_format *rf, int fd, char *buf, int size, uint64_t *val1,
+void stop_read_counters(struct read_format *rf, int fd, char *buf, size_t size, uint64_t *val1,
                         uint64_t *val2, uint64_t id1, uint64_t id2)
 {
     if (fd != -1) { 
@@ -78,18 +78,19 @@ void stop_read_counters(struct read_format *rf, int fd, char *buf, int size, uin
 
         uint64_t i;
         // read counter values
-        for (i = 0; i < (rf->nr); i++) {
-            if (rf->values[i].id == id1) (*val1) = rf->values[i].value;
+        for (i = 0; i < rf->nr; i++) {
+            if (rf->values[i].id == id1) 
+                *val1 = rf->values[i].value;
 
-            if (rf->values[i].id == id2) (*val2) = rf->values[i].value;
+            if (rf->values[i].id == id2) 
+                *val2 = rf->values[i].value;
         }
 
     }
     else //file descriptor was -1, hence no monitoring happened
     {  //set these unmonitored event counts to 0
-        (*val1)=0;
-        (*val2)=0;
-
+        *val1 = 0;
+        *val2 = 0;
     }	     
     close(fd);
 }
@@ -98,11 +99,9 @@ void count_event_perfMultiplex(pid_t tid[], int index_tid)
 {
     // Initialize time interval to count
     int millisec = TIME_IN_MILLI_SEC;
-    struct timespec tim;
-    tim.tv_sec = millisec / 1000;
-    tim.tv_nsec = (millisec % 1000) * 1000000;
+    struct timespec tim = { millisec / 1000, (millisec % 1000) * 1000000 };
 
-    threads = (struct perf_stat *)malloc(index_tid * sizeof(struct perf_stat));
+    threads = calloc(index_tid, sizeof *threads);
 
     // iterate through all threads
     int i;
@@ -111,15 +110,15 @@ void count_event_perfMultiplex(pid_t tid[], int index_tid)
         // thread
         int j;
         for (j = 0; j < N_EVENTS / 2; j++)
-            threads[i].rf[j] = (struct read_format *)(threads[i].buf[j]);
+            threads[i].rf[j] = (struct read_format *) threads[i].buf[j];
 
         // set up performance counters
         for (j = 0; j < N_EVENTS / 2; j++) {
-            setPerfAttr(&threads[i].pea, j * 2, -1, &(threads[i].fd[(j * 2)]),
-                        &(threads[i].id[(j * 2)]), -1,
+            setPerfAttr(&threads[i].pea, j * 2, -1, &threads[i].fd[j * 2],
+                        &threads[i].id[j * 2], -1,
                         tid[i]); // measure tid statistics on any cpu
-            setPerfAttr(&threads[i].pea, j * 2 + 1, threads[i].fd[(j * 2)],
-                        &(threads[i].fd[(j * 2) + 1]), &(threads[i].id[(j * 2) + 1]), -1, tid[i]);
+            setPerfAttr(&threads[i].pea, j * 2 + 1, threads[i].fd[j * 2],
+                        &threads[i].fd[j * 2 + 1], &threads[i].id[j * 2 + 1], -1, tid[i]);
         }
     }
 
@@ -135,10 +134,10 @@ void count_event_perfMultiplex(pid_t tid[], int index_tid)
 
         // stop counters and read counter values
         for (i = 0; i < index_tid; i++) {
-            int size = sizeof(threads[i].buf[j]);
-            stop_read_counters((threads[i].rf[j]), threads[i].fd[j * 2], threads[i].buf[j], size,
-                               &(threads[i].val[(2 * j)]), &(threads[i].val[(2 * j) + 1]),
-                               threads[i].id[(j * 2)], threads[i].id[(j * 2) + 1]);
+            size_t size = sizeof threads[i].buf[j];
+            stop_read_counters(threads[i].rf[j], threads[i].fd[j * 2], threads[i].buf[j], size,
+                               &threads[i].val[2 * j], &threads[i].val[2 * j + 1],
+                               threads[i].id[j * 2], threads[i].id[j * 2 + 1]);
         }
     } // for j close
 }
