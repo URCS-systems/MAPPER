@@ -6,7 +6,7 @@
 #include <stdbool.h>
 #include <assert.h>
 #include <errno.h>
-#define PRINT true
+#define PRINT false
 
 uint64_t event_codes[N_EVENTS] = {
     [EVENT_UNHALTED_CYCLES] = 0x3c,

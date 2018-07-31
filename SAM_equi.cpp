@@ -51,11 +51,11 @@
 #define SAM_MIN_CONTEXTS        1
 #define SAM_MIN_QOS             0.85
 #define SAM_PERF_THRESH         0.05    /* in fraction of previous performance */
-#define SAM_PERF_STEP           2       /* in number of CPUs */
-#define SAM_DISTURB_PROB        0.03    /* probability of a disturbance */
+#define SAM_PERF_STEP           4      /* in number of CPUs */
+#define SAM_DISTURB_PROB        0.3    /* probability of a disturbance */
 #define SAM_INITIAL_ALLOCS      4       /* number of initial allocations before exploring */
 
-#define PRINT_COUNT true
+#define PRINT_COUNT false 
 
 #define HILL_CLIMBING false
 // Will be initialized anyway
@@ -144,6 +144,7 @@ struct appinfo {
      * cpuset[0] is the latest CPU set.
      */
     cpu_set_t *cpuset[2];
+	cpu_set_t *prevset;
     /**
      * This is the average performance for each CPU count.
      * The size of this array is equal to the total number of CPUs (cpuinfo->total_cpus) + 1.
@@ -190,7 +191,7 @@ static inline int guess_optimization(const int budget, enum metric bottleneck) {
     const int cpus_per_socket = cpuinfo->sockets[0].num_cpus;
     int f = random() / (double) RAND_MAX < 0.5 ? -1 : 1;
 
-    if (bottleneck == METRIC_INTER || bottleneck == METRIC_MEM) {
+    if (bottleneck == METRIC_INTER || bottleneck == METRIC_INTRA) {
         if (budget % cpus_per_socket) {
             int step = cpus_per_socket - (budget % cpus_per_socket);
             if (f < 0)
@@ -255,6 +256,7 @@ static void manage(pid_t pid, pid_t app_pid)
         anode->next = apps_list;
         anode->cpuset[0] = CPU_ALLOC(cpuinfo->total_cpus);
         anode->cpuset[1] = CPU_ALLOC(cpuinfo->total_cpus);
+        anode->prevset = CPU_ALLOC(cpuinfo->total_cpus);
         anode->perf_history = (uint64_t (*)[2]) calloc(cpuinfo->total_cpus + 1, sizeof *anode->perf_history);
         if (apps_list) apps_list->prev = anode;
         apps_list = anode;
@@ -323,8 +325,10 @@ static void unmanage(pid_t pid, pid_t app_pid)
 
         CPU_FREE(anode->cpuset[0]);
         CPU_FREE(anode->cpuset[1]);
+        CPU_FREE(anode->prevset);
         anode->cpuset[0] = NULL;
         anode->cpuset[1] = NULL;
+        anode->prevset = NULL;
         free(anode->perf_history);
         anode->perf_history = NULL;
         free(anode);
@@ -396,7 +400,7 @@ void update_children(pid_t app_pid) {
 
 void PerfData::initialize(pid_t tid, pid_t app_tid)
 {
-    printf("[PID %6d] performing init\n", tid);
+    // printf("[PID %6d] performing init\n", tid);
     pid = tid;
     options = new options_t();
     options->countercount = 10;
@@ -739,7 +743,7 @@ int main(int argc, char *argv[])
                     diff_ts.tv_sec -= an->ts.tv_sec;
                     diff_ts.tv_nsec -= an->ts.tv_nsec;
                 }
-
+				printf("[APP %6d] perf metric %lu \n", an->pid, an->metric[EXTRA_METRIC_IPS]);
                 /*
                  * Compute instructions / second
                  */
@@ -813,7 +817,8 @@ int main(int argc, char *argv[])
                 for (int j = range_ends[i]; j < range_ends[i + 1]; ++j) {
                     const int curr_alloc_len = CPU_COUNT_S(rem_cpus_sz, apps_sorted[j]->cpuset[0]);
 
-                    per_app_cpu_budget[j] = MAX((int) apps_sorted[j]->bottleneck[METRIC_ACTIVE], SAM_MIN_CONTEXTS);
+                    //per_app_cpu_budget[j] = MAX((int) apps_sorted[j]->bottleneck[METRIC_ACTIVE], SAM_MIN_CONTEXTS);
+                    per_app_cpu_budget[j] = curr_alloc_len;
 
                     /*
                      * If this app has already been given an allocation, then we can compute history
@@ -837,96 +842,115 @@ int main(int argc, char *argv[])
                             apps_sorted[j]->curr_fair_share = fair_share;
 
                         uint64_t curr_perf = apps_sorted[j]->perf_history[curr_alloc_len][0];
+						int prev_alloc_len;
+						uint64_t prev_perf;
 
                         if (apps_sorted[j]->times_allocated > 1) {
                             /*
                              * Compare current performance with previous performance, if this application
                              * has at least two items in history.
                              */
-                            if (!CPU_EQUAL_S(rem_cpus_sz, apps_sorted[j]->cpuset[0], apps_sorted[j]->cpuset[1])) {
-                                const int prev_alloc_len = CPU_COUNT_S(rem_cpus_sz, apps_sorted[j]->cpuset[1]);
-                                uint64_t prev_perf = apps_sorted[j]->perf_history[prev_alloc_len][0];
 
+                            if (!CPU_EQUAL_S(rem_cpus_sz, apps_sorted[j]->cpuset[0], apps_sorted[j]->cpuset[1])) {
+                                prev_alloc_len = CPU_COUNT_S(rem_cpus_sz, apps_sorted[j]->cpuset[1]);
+                                prev_perf = apps_sorted[j]->perf_history[prev_alloc_len][0];
+							}
+							else {
+								prev_alloc_len = CPU_COUNT_S(rem_cpus_sz, apps_sorted[j]->prevset);
+								prev_perf = apps_sorted[j]->perf_history[prev_alloc_len][0];
+							}
                                 /* Insert Hill Climbing logic here, if curr_perf
                                  * is greater than pref_perf then keep on going
                                  * until performance decreases, then stop*/
 
                                 /* Core logic remains the same */
-                                if (HILL_CLIMBING) {
-                                    if (curr_perf > prev_perf && (curr_perf -prev_perf) 
-                                            / (double) prev_perf >= SAM_PERF_THRESH && apps_sorted[j]->exploring)  {
+							if (HILL_CLIMBING) {
+								if (curr_perf > prev_perf && (curr_perf -prev_perf) 
+										/ (double) prev_perf >= SAM_PERF_THRESH && apps_sorted[j]->exploring)  {
 
-                                        //keep on going in this direction
-                                        if (prev_alloc_len < curr_alloc_len)
-                                            per_app_cpu_budget[j]= MIN(per_app_cpu_budget[j] + SAM_PERF_STEP, cpuinfo->total_cpus);
-                                        else
-                                            per_app_cpu_budget[j]= MAX(per_app_cpu_budget[j] - SAM_PERF_STEP, cpuinfo->total_cpus);   
+									//keep on going in this direction
+									if (prev_alloc_len < curr_alloc_len)
+										per_app_cpu_budget[j]= MIN(per_app_cpu_budget[j] + SAM_PERF_STEP, cpuinfo->total_cpus);
+									else
+										per_app_cpu_budget[j]= MAX(per_app_cpu_budget[j] - SAM_PERF_STEP, cpuinfo->total_cpus);   
 
-                                    } else {
-                                        if (curr_perf < prev_perf && (prev_perf -curr_perf) / (double) prev_perf >= SAM_PERF_THRESH)
-                                        {  //revert to previous configuration as stop exploring (set exploring to some value)
-                                            per_app_cpu_budget[j]=prev_alloc_len;
-                                            //go back to previous perf configuration and stay there 
-                                            //the entire time for the application execution
-                                            apps_sorted[j]->exploring=false;
-                                            //no random disturbance should be introduced
-                                        }	      
-                                    }
-                                }
-                         
-                                /*
-                                 * Original decision making:
-                                 * Change requested resources.
-                                 */
-                                if (curr_perf > prev_perf 
-                                    && (curr_perf - prev_perf) / (double) prev_perf >= SAM_PERF_THRESH
-                                    && apps_sorted[j]->exploring) {
-                                    /* Keep going in the same direction. */
-                                    if (prev_alloc_len < curr_alloc_len)
-                                        per_app_cpu_budget[j] = MIN(per_app_cpu_budget[j] + SAM_PERF_STEP, cpuinfo->total_cpus);
-                                    else
-                                        per_app_cpu_budget[j] = MAX(per_app_cpu_budget[j] - SAM_PERF_STEP, SAM_MIN_CONTEXTS);
-                                } else {
-                                    if (curr_perf < prev_perf
-                                        && (prev_perf - curr_perf) / (double) prev_perf >= SAM_PERF_THRESH) {
-                                        if (apps_sorted[j]->exploring) {
-                                            /*
-                                             * Revert to previous count if performance reduction was great enough.
-                                             */
-                                            per_app_cpu_budget[j] = prev_alloc_len;
-                                        } else {
-                                            int guess = per_app_cpu_budget[j] + 
-                                                guess_optimization(per_app_cpu_budget[j], counter_order[i]);
-                                            guess = MAX(MIN(guess, cpuinfo->total_cpus), SAM_MIN_CONTEXTS);
-                                            apps_sorted[j]->exploring = true;
-                                            per_app_cpu_budget[j] = guess;
-                                        }
-                                        printf("[APP %6d] exploring %d -> %d\n", apps_sorted[j]->pid,
-                                                curr_alloc_len, per_app_cpu_budget[j]);
-                                    } else {
-                                        apps_sorted[j]->exploring = false;
-                                    }
-                                }
-                            } else if (!apps_sorted[j]->exploring 
-                                    && random() / (double) RAND_MAX <= SAM_DISTURB_PROB) {
-                                /*
-                                 * Introduce random disturbances.
-                                 */
-                                int guess = per_app_cpu_budget[j] + 
-                                    guess_optimization(per_app_cpu_budget[j], counter_order[i]);
-                                guess = MAX(MIN(guess, cpuinfo->total_cpus), SAM_MIN_CONTEXTS);
-                                apps_sorted[j]->exploring = true;
-                                per_app_cpu_budget[j] = guess;
-                                printf("[APP %6d] random disturbance: %d -> %d\n", apps_sorted[j]->pid,
-                                        curr_alloc_len, per_app_cpu_budget[j]);
-                            }
-                        }
+								} else {
+									if (curr_perf < prev_perf && (prev_perf -curr_perf) / (double) prev_perf >= SAM_PERF_THRESH)
+									{  //revert to previous configuration as stop exploring (set exploring to some value)
+										per_app_cpu_budget[j]=prev_alloc_len;
+										//go back to previous perf configuration and stay there 
+										//the entire time for the application execution
+										apps_sorted[j]->exploring=false;
+										//no random disturbance should be introduced
+									}	      
+								}
+							}
+					 
+							/*
+							 * Original decision making:
+							 * Change requested resources.
+							 */
+							if (curr_perf > prev_perf 
+								&& (curr_perf - prev_perf) / (double) prev_perf >= SAM_PERF_THRESH
+								&& apps_sorted[j]->exploring) {
+								/* Keep going in the same direction. */
+								printf("[APP %6d] continuing in same direction \n", apps_sorted[j]->pid);
+								if (prev_alloc_len < curr_alloc_len)
+									per_app_cpu_budget[j] = MIN(per_app_cpu_budget[j] + SAM_PERF_STEP, cpuinfo->total_cpus);
+								else
+									per_app_cpu_budget[j] = MAX(per_app_cpu_budget[j] - SAM_PERF_STEP, SAM_MIN_CONTEXTS);
+							} else {
+								if (curr_perf < prev_perf
+									&& (prev_perf - curr_perf) / (double) prev_perf >= SAM_PERF_THRESH) {
+									if (apps_sorted[j]->exploring) {
+										/*
+										 * Revert to previous count if performance reduction was great enough.
+										 */
+										per_app_cpu_budget[j] = prev_alloc_len;
+									} else {
+										int guess = per_app_cpu_budget[j] + 
+											guess_optimization(per_app_cpu_budget[j], counter_order[i]);
+										guess = MAX(MIN(guess, cpuinfo->total_cpus), SAM_MIN_CONTEXTS);
+										apps_sorted[j]->exploring = true;
+										per_app_cpu_budget[j] = guess;
+									}
+									printf("[APP %6d] exploring %d -> %d\n", apps_sorted[j]->pid,
+											curr_alloc_len, per_app_cpu_budget[j]);
+								} else {
+									apps_sorted[j]->exploring = false;
+									printf("[APP %6d] exploring no more \n", apps_sorted[j]->pid);
+									if (random() / (double) RAND_MAX <= SAM_DISTURB_PROB) {
+										int guess = per_app_cpu_budget[j] + 
+											guess_optimization(per_app_cpu_budget[j], counter_order[i]);
+										guess = MAX(MIN(guess, cpuinfo->total_cpus), SAM_MIN_CONTEXTS);
+										apps_sorted[j]->exploring = true;
+										per_app_cpu_budget[j] = guess;
+										printf("[APP %6d] random disturbance: %d -> %d\n", apps_sorted[j]->pid,
+											curr_alloc_len, per_app_cpu_budget[j]);
+									}
+								}
+							}
+						} else if (!apps_sorted[j]->exploring 
+								&& random() / (double) RAND_MAX <= SAM_DISTURB_PROB) {
+							/*
+							 * Introduce random disturbances.
+							 */
+							int guess = per_app_cpu_budget[j] + 
+								guess_optimization(per_app_cpu_budget[j], counter_order[i]);
+							guess = MAX(MIN(guess, cpuinfo->total_cpus), SAM_MIN_CONTEXTS);
+							apps_sorted[j]->exploring = true;
+							per_app_cpu_budget[j] = guess;
+							printf("[APP %6d] random disturbance: %d -> %d\n", apps_sorted[j]->pid,
+									curr_alloc_len, per_app_cpu_budget[j]);
+						}
                     } else {
                         /*
                          * If this app has never been given an allocation, the first allocation we should 
                          * give it is the fair share.
                          */
                         per_app_cpu_budget[j] = fair_share;
+                        memcpy(apps_sorted[j]->prevset, apps_sorted[j]->cpuset[0], rem_cpus_sz);
+                        printf("[APP %6d] Setting fair share \n", apps_sorted[j]->pid);
                     }
 
                  // }//else of hill climbing
@@ -1192,7 +1216,7 @@ int main(int argc, char *argv[])
             memset(an->bottleneck, 0, sizeof an->bottleneck);
             memset(an->value, 0, sizeof an->value);
         }
-        sleep(1);
+        // sleep(1);
     }
 
     printf("Stopping...\n");
