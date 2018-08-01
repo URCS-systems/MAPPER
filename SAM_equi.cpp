@@ -48,15 +48,15 @@
 #define SHAR_IPC_THRESH         700
 #define SHAR_COH_IND            (SHAR_COHERENCE_THRESH / 2)
 #define SHAR_PHY_CORE           10
-#define SAM_MIN_CONTEXTS        1
-#define SAM_MIN_QOS             0.85
+#define SAM_MIN_CONTEXTS        4
+#define SAM_MIN_QOS             0.75
 #define SAM_PERF_THRESH         0.05    /* in fraction of previous performance */
 #define SAM_PERF_STEP           4      /* in number of CPUs */
 #define SAM_DISTURB_PROB        0.3    /* probability of a disturbance */
 #define SAM_INITIAL_ALLOCS      4       /* number of initial allocations before exploring */
 
 #define PRINT_COUNT false 
-
+#define PRINT_BOTTLENECK false
 #define HILL_CLIMBING false
 // Will be initialized anyway
 int num_counter_orders = 6;
@@ -194,10 +194,15 @@ static inline int guess_optimization(const int budget, enum metric bottleneck) {
     	f = random() / (double) RAND_MAX < 0.8 ? -1 : 1;
         if (budget % cpus_per_socket) {
             int step = cpus_per_socket - (budget % cpus_per_socket);
-            if (f < 0)
-                step = -(cpus_per_socket - step);
+            if (f < 0) {
+                step = -(budget % cpus_per_socket);
+				if (budget < cpus_per_socket)
+					step = -SAM_PERF_STEP;
+			}
             return step;
         }
+		if (f == -1 && budget == cpus_per_socket)
+			return -SAM_PERF_STEP; 
         return f * cpus_per_socket;
     }
 
@@ -477,7 +482,7 @@ void PerfData::printCounters(int index)
         bottleneck[i] = 1;
         if (apps_array[app_pid]) 
             apps_array[app_pid]->bottleneck[i] += 1;
-        printf("[PID %6d] detected counter %s\n", pid, metric_names[i]);
+        if (PRINT_BOTTLENECK) printf("[PID %6d] detected counter %s\n", pid, metric_names[i]);
     }
 
     i = 2; // Mem
@@ -487,7 +492,7 @@ void PerfData::printCounters(int index)
         bottleneck[i] = 1;
         if (apps_array[app_pid]) 
             apps_array[app_pid]->bottleneck[i] += 1;
-        printf("[PID %6d] detected counter %s\n", pid, metric_names[i]);
+        if (PRINT_BOTTLENECK) printf("[PID %6d] detected counter %s\n", pid, metric_names[i]);
     }
 
     i = 3; // snp
@@ -499,7 +504,7 @@ void PerfData::printCounters(int index)
         bottleneck[i] = 1;
         if (apps_array[app_pid]) 
             apps_array[app_pid]->bottleneck[i] += 1;
-        printf("[PID %6d] detected counter %s\n", pid, metric_names[i]);
+        if (PRINT_BOTTLENECK) printf("[PID %6d] detected counter %s\n", pid, metric_names[i]);
     }
 
     i = 4; // cross soc
@@ -509,7 +514,7 @@ void PerfData::printCounters(int index)
         bottleneck[i] = 1;
         if (apps_array[app_pid]) 
             apps_array[app_pid]->bottleneck[i] += 1;
-        printf("[PID %6d] detected counter %s\n", pid, metric_names[i]);
+        if (PRINT_BOTTLENECK) printf("[PID %6d] detected counter %s\n", pid, metric_names[i]);
     }
 }
 void PerfData::readCounters(int index)

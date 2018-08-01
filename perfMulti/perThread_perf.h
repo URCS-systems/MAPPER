@@ -52,7 +52,7 @@ enum perf_event {
 #define TIME_IN_MILLI_SEC                                                                          \
     250                // total measurement time per iteration is 4 times
                        // TIME_IN_MILLI_SEC(example 250 millisecond *4 = 1 second)
-#define NUM_THREAD 200 // Total Threads being monitored
+#define NUM_THREAD 5000 // Total Threads being monitored
 #define ITER 1         // Number of iterations
 
 // Data structure to collect information per TID performance counters
