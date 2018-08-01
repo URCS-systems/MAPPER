@@ -23,7 +23,6 @@ cpu_truncate(cpu_set_t *cpuset, int num_cpus, int max_set)
 
 void
 budget_collocate(cpu_set_t *old_cpuset, cpu_set_t *new_cpuset,
-                 int *new_cpu_orders,
                  enum metric curr_bottleneck,
                  enum metric prev_bottleneck,
                  cpu_set_t *remaining_cpus, const size_t cpus_sz,
@@ -55,7 +54,6 @@ budget_collocate(cpu_set_t *old_cpuset, cpu_set_t *new_cpuset,
 
             if (CPU_ISSET_S(hw.tnumber, cpus_sz, remaining_cpus)) {
                 CPU_SET_S(hw.tnumber, cpus_sz, new_cpuset);
-                new_cpu_orders[j] = hw.tnumber;
                 j++;
             }
         }
@@ -96,7 +94,6 @@ budget_collocate(cpu_set_t *old_cpuset, cpu_set_t *new_cpuset,
 
 void
 budget_spread(cpu_set_t *old_cpuset, cpu_set_t *new_cpuset,
-              int *new_cpu_orders,
               enum metric curr_bottleneck,
               enum metric prev_bottleneck,
               cpu_set_t *remaining_cpus, const size_t cpus_sz,
@@ -132,7 +129,6 @@ budget_spread(cpu_set_t *old_cpuset, cpu_set_t *new_cpuset,
 
         if (CPU_ISSET_S(hw.tnumber, cpus_sz, remaining_cpus)) {
             CPU_SET_S(hw.tnumber, cpus_sz, new_cpuset);
-            new_cpu_orders[j] = hw.tnumber;
             j++;
             if (!(sockets & (1u << s))) {
                 sockets |= 1u << s;
@@ -180,7 +176,6 @@ budget_spread(cpu_set_t *old_cpuset, cpu_set_t *new_cpuset,
 
 void
 budget_no_hyperthread(cpu_set_t *old_cpuset, cpu_set_t *new_cpuset,
-                      int *new_cpu_orders,
                       enum metric curr_bottleneck,
                       enum metric prev_bottleneck,
                       cpu_set_t *remaining_cpus, const size_t cpus_sz,
@@ -220,7 +215,6 @@ budget_no_hyperthread(cpu_set_t *old_cpuset, cpu_set_t *new_cpuset,
 
             if (CPU_ISSET_S(hw.tnumber, cpus_sz, remaining_cpus)) {
                 CPU_SET_S(hw.tnumber, cpus_sz, new_cpuset);
-                new_cpu_orders[j] = hw.tnumber;
                 ctxs[s] |= 1u << c;
                 j++;
             }
@@ -271,7 +265,6 @@ budget_no_hyperthread(cpu_set_t *old_cpuset, cpu_set_t *new_cpuset,
 
 void
 budget_default(cpu_set_t *old_cpuset, cpu_set_t *new_cpuset,
-               int *new_cpu_orders,
                enum metric curr_bottleneck,
                enum metric prev_bottleneck,
                cpu_set_t *remaining_cpus, const size_t cpus_sz,
@@ -302,7 +295,6 @@ budget_default(cpu_set_t *old_cpuset, cpu_set_t *new_cpuset,
             
             if (CPU_ISSET_S(hw.tnumber, cpus_sz, remaining_cpus)) {
                 CPU_SET_S(hw.tnumber, cpus_sz, new_cpuset);
-                new_cpu_orders[j] = hw.tnumber;
                 j++;
             }
         }

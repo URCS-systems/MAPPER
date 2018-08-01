@@ -769,7 +769,6 @@ int main(int argc, char *argv[])
             struct appinfo **apps_unsorted = (struct appinfo **)calloc(num_apps, sizeof *apps_unsorted);
             struct appinfo **apps_sorted = (struct appinfo **)calloc(num_apps, sizeof *apps_sorted);
             int *per_app_cpu_budget = (int *) calloc(num_apps, sizeof *per_app_cpu_budget);
-            int **per_app_cpu_orders = (int **) calloc(num_apps, sizeof *per_app_cpu_orders);
             cpu_set_t **new_cpusets = (cpu_set_t **) calloc(num_apps, sizeof *new_cpusets);
             int *needs_more = (int *) calloc(num_apps, sizeof *needs_more);
             int initial_remaining_cpus = cpuinfo->total_cpus;
@@ -781,7 +780,6 @@ int main(int argc, char *argv[])
                 int i = 0;
                 for (struct appinfo *an = apps_list; an; an = an->next) {
                     apps_unsorted[i] = an;
-                    per_app_cpu_orders[i] = (int *) calloc(cpuinfo->total_cpus, sizeof *per_app_cpu_orders[i]);
                     i++;
                 }
             }
@@ -1110,12 +1108,12 @@ int main(int argc, char *argv[])
                          * [met]
                          */
                         (*budgeter_functions[met])(apps_sorted[j]->cpuset[0], new_cpuset, 
-                                per_app_cpu_orders[j], apps_sorted[j]->curr_bottleneck,
+                                apps_sorted[j]->curr_bottleneck,
                                 apps_sorted[j]->prev_bottleneck,
                                 remaining_cpus, rem_cpus_sz, per_app_cpu_budget[j]);
                     } else {
                         budget_default(apps_sorted[j]->cpuset[0], new_cpuset, 
-                                per_app_cpu_orders[j], apps_sorted[j]->curr_bottleneck,
+                                apps_sorted[j]->curr_bottleneck,
                                 apps_sorted[j]->prev_bottleneck,
                                 remaining_cpus, rem_cpus_sz, per_app_cpu_budget[j]);
                     }
@@ -1198,9 +1196,6 @@ int main(int argc, char *argv[])
             free(apps_unsorted);
             free(apps_sorted);
             free(per_app_cpu_budget);
-            for (int i = 0; i < num_apps; ++i)
-                free(per_app_cpu_orders[i]);
-            free(per_app_cpu_orders);
             free(needs_more);
         }
 
