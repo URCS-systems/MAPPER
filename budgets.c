@@ -3,6 +3,7 @@
 #include "mapper.h"
 
 #include <string.h>
+#include <assert.h>
 
 extern struct cpuinfo *cpuinfo;
 
@@ -37,15 +38,22 @@ budget_collocate(cpu_set_t *old_cpuset, cpu_set_t *new_cpuset,
     for (int sock_id = 0; sock_id < cpuinfo->num_sockets && s == -1; ++sock_id) {
         for (int c = 0; c < cpuinfo->sockets[sock_id].num_cpus && s == -1; ++c) {
             struct cpu hw = cpuinfo->sockets[sock_id].cpus[c];
+            if (CPU_ISSET_S(hw.tnumber, cpus_sz, old_cpuset)
+                && CPU_ISSET_S(hw.tnumber, cpus_sz, remaining_cpus))
+                s = sock_id;
+        }
+    }
+
+    /* search again if no CPUs */
+    for (int sock_id = 0; sock_id < cpuinfo->num_sockets && s == -1; ++sock_id) {
+        for (int c = 0; c < cpuinfo->sockets[sock_id].num_cpus && s == -1; ++c) {
+            struct cpu hw = cpuinfo->sockets[sock_id].cpus[c];
             if (CPU_ISSET_S(hw.tnumber, cpus_sz, remaining_cpus))
                 s = sock_id;
         }
     }
 
-    if (s == -1) {
-        /* TODO */
-        return;
-    }
+    assert(s != -1);
 
     while (i < cpuinfo->num_sockets && j < per_app_cpu_budget) {
         for (int c = 0; c < cpuinfo->sockets[s].num_cpus 
@@ -112,15 +120,22 @@ budget_spread(cpu_set_t *old_cpuset, cpu_set_t *new_cpuset,
     for (int sock_id = 0; sock_id < cpuinfo->num_sockets && s == -1; ++sock_id) {
         for (int c = 0; c < cpuinfo->sockets[sock_id].num_cpus && s == -1; ++c) {
             struct cpu hw = cpuinfo->sockets[sock_id].cpus[c];
+            if (CPU_ISSET_S(hw.tnumber, cpus_sz, old_cpuset)
+                && CPU_ISSET_S(hw.tnumber, cpus_sz, remaining_cpus))
+                s = sock_id;
+        }
+    }
+
+    /* search again if no CPUs */
+    for (int sock_id = 0; sock_id < cpuinfo->num_sockets && s == -1; ++sock_id) {
+        for (int c = 0; c < cpuinfo->sockets[sock_id].num_cpus && s == -1; ++c) {
+            struct cpu hw = cpuinfo->sockets[sock_id].cpus[c];
             if (CPU_ISSET_S(hw.tnumber, cpus_sz, remaining_cpus))
                 s = sock_id;
         }
     }
 
-    if (s == -1) {
-        /* TODO */
-        return;
-    }
+    assert(s != -1);
 
     memset(socket_is, 0, cpuinfo->num_sockets * sizeof socket_is[0]);
 
@@ -195,15 +210,22 @@ budget_no_hyperthread(cpu_set_t *old_cpuset, cpu_set_t *new_cpuset,
     for (int sock_id = 0; sock_id < cpuinfo->num_sockets && s == -1; ++sock_id) {
         for (int c = 0; c < cpuinfo->sockets[sock_id].num_cpus && s == -1; ++c) {
             struct cpu hw = cpuinfo->sockets[sock_id].cpus[c];
+            if (CPU_ISSET_S(hw.tnumber, cpus_sz, old_cpuset)
+                && CPU_ISSET_S(hw.tnumber, cpus_sz, remaining_cpus))
+                s = sock_id;
+        }
+    }
+
+    /* search again if no CPUs */
+    for (int sock_id = 0; sock_id < cpuinfo->num_sockets && s == -1; ++sock_id) {
+        for (int c = 0; c < cpuinfo->sockets[sock_id].num_cpus && s == -1; ++c) {
+            struct cpu hw = cpuinfo->sockets[sock_id].cpus[c];
             if (CPU_ISSET_S(hw.tnumber, cpus_sz, remaining_cpus))
                 s = sock_id;
         }
     }
 
-    if (s == -1) {
-        /* TODO */
-        return;
-    }
+    assert(s != -1);
 
     memset(ctxs, 0, cpuinfo->num_sockets * sizeof ctxs[0]);
     memset(ctxs_old2, 0, cpuinfo->num_sockets * sizeof ctxs_old2[0]);
@@ -278,15 +300,22 @@ budget_default(cpu_set_t *old_cpuset, cpu_set_t *new_cpuset,
     for (int sock_id = 0; sock_id < cpuinfo->num_sockets && s == -1; ++sock_id) {
         for (int c = 0; c < cpuinfo->sockets[sock_id].num_cpus && s == -1; ++c) {
             struct cpu hw = cpuinfo->sockets[sock_id].cpus[c];
+            if (CPU_ISSET_S(hw.tnumber, cpus_sz, old_cpuset)
+                && CPU_ISSET_S(hw.tnumber, cpus_sz, remaining_cpus))
+                s = sock_id;
+        }
+    }
+
+    /* search again if no CPUs */
+    for (int sock_id = 0; sock_id < cpuinfo->num_sockets && s == -1; ++sock_id) {
+        for (int c = 0; c < cpuinfo->sockets[sock_id].num_cpus && s == -1; ++c) {
+            struct cpu hw = cpuinfo->sockets[sock_id].cpus[c];
             if (CPU_ISSET_S(hw.tnumber, cpus_sz, remaining_cpus))
                 s = sock_id;
         }
     }
 
-    if (s == -1) {
-        /* TODO */
-        return;
-    }
+    assert(s != -1);
 
     while (i < cpuinfo->num_sockets && j < per_app_cpu_budget) {
         for (int c = 0; c < cpuinfo->sockets[s].num_cpus 
@@ -322,8 +351,8 @@ budget_default(cpu_set_t *old_cpuset, cpu_set_t *new_cpuset,
     }
 }
 budgeter_t budgeter_functions[] = {
-    [METRIC_INTER]       = &budget_collocate,
-    [METRIC_INTRA]       = &budget_collocate,
+    [METRIC_INTER]      = &budget_collocate,
+    [METRIC_INTRA]      = &budget_collocate,
     [METRIC_MEM]        = &budget_spread,
-    [METRIC_AVGIPC]    = &budget_no_hyperthread
+    [METRIC_AVGIPC]     = &budget_no_hyperthread
 };
