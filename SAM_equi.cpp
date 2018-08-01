@@ -196,9 +196,9 @@ static inline int guess_optimization(const int budget, enum metric bottleneck) {
             int step = cpus_per_socket - (budget % cpus_per_socket);
             if (f < 0) {
                 step = -(budget % cpus_per_socket);
-				if (budget < cpus_per_socket)
-					step = -SAM_PERF_STEP;
-			}
+                if (budget < cpus_per_socket)
+                    step = -SAM_PERF_STEP;
+            }
             return step;
         }
 		if (f == -1 && budget == cpus_per_socket)
@@ -745,7 +745,7 @@ int main(int argc, char *argv[])
                     diff_ts.tv_sec -= an->ts.tv_sec;
                     diff_ts.tv_nsec -= an->ts.tv_nsec;
                 }
-				printf("[APP %6d] perf metric %lu \n", an->pid, an->metric[EXTRA_METRIC_IPS]);
+                printf("[APP %6d] perf metric %lu \n", an->pid, an->metric[EXTRA_METRIC_IPS]);
                 /*
                  * Compute instructions / second
                  */
@@ -872,7 +872,7 @@ int main(int argc, char *argv[])
                                         //the entire time for the application execution
                                         apps_sorted[j]->exploring=false;
                                         //no random disturbance should be introduced
-                                    }	      
+                                    }         
                                 }
                             }
 
@@ -956,8 +956,8 @@ int main(int argc, char *argv[])
                     needs_more[j] = MAX(-diff, 0);
                     initial_remaining_cpus = MAX(diff, 0);
                     per_app_cpu_budget[j] -= needs_more[j];
+                }
             }
-        }
 
             /*
              * Now we adjust the budgets to fit the resources.
