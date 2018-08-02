@@ -58,6 +58,7 @@
 #define PRINT_COUNT false 
 #define PRINT_BOTTLENECK false
 #define HILL_CLIMBING false
+#define HILL_SUSPEND 5 			//suspend for these many iterations when local optima found 
 #define ORIGINAL true
 // Will be initialized anyway
 int num_counter_orders = 6;
@@ -176,6 +177,11 @@ struct appinfo {
      */
     int appno;
     struct appinfo *prev, *next;
+
+    /*Added for HILL CLIMBING*/
+    int hill_direction; /* 1 means positive direction, -1 means negative direction, store direction in order to resume*/
+    int suspend_iter;  /*count the number of iterations suspended*/
+    bool hill_resume; /* whether resuming hill climbing or not*/
 };
 
 bool stoprun = false;
@@ -754,7 +760,12 @@ int main(int argc, char *argv[])
                     / (diff_ts.tv_sec + (double) diff_ts.tv_nsec / 1000000000);
             } else
                 clock_gettime(CLOCK_MONOTONIC_RAW, &an->ts);
-        }
+         //Added for Hill climbing, initialize
+	    an-> hill_direction=1; /* 1 means positive direction, -1 means negative direction, store direction in order to resume*/
+            an->suspend_iter=0;  /*count the number of iterations suspended*/
+            an->hill_resume=false;
+       
+	}
 
         /* map applications */
         remaining_cpus = CPU_ALLOC(cpuinfo->total_cpus);
@@ -855,26 +866,56 @@ int main(int argc, char *argv[])
 				   /*
 				    * Hill climbing decision making
 				    */
-
-                                       if(apps_sorted[j]->exploring==false) {
-                                         //saturated at local optima, need to look at new chnages in landscape in both directions
-					 //can't rely on previous history as applicatoion behaviour has changed
-					 //need to actually assign resources in both directions and decide whether performance has changed or not
-                                                             
-
+                                        //if application exploration suspended and has reached iterations
+                                       if(apps_sorted[j]->exploring==false && apps_sorted[j]->suspend_iter >= HILL_SUSPEND ) {
+                                  			                                                      
+					    //resume exploration in the previous stored  direction
+                                                  printf("[APP %6d] found local optima, resuming exploration from next iteration \n", apps_sorted[j]->pid);
+                                                   // apps_sorted[j]->exploring=true; //set iter back to zero
+                                                    apps_sorted[j]->suspend_iter=0;
+						    apps_sorted[j]->hill_resume=true; //resume
 				       }//if close
+				       else {
+
+                                             if(apps_sorted[j]->exploring==false)
+						    apps_sorted[j]->suspend_iter+=1; //increment iter
+
+					 }      
 
 
-                                     if (curr_perf > prev_perf 
+                                     if ((curr_perf > prev_perf 
 				           && (curr_perf - prev_perf) / (double) prev_perf >= SAM_PERF_THRESH
-					   && apps_sorted[j]->exploring) {
-					  /*Keep going in the same direction*/
-                                          printf("[APP %6d] continuing in the same direction \n", apps_sorted[j]->pid);
-                                          if (prev_alloc_len < curr_alloc_len)
-					     per_app_cpu_budget[j]= MIN(per_app_cpu_budget[j] + SAM_PERF_STEP, cpuinfo->total_cpus);
-				         else
-				             per_app_cpu_budget[j]= MAX(per_app_cpu_budget[j] - SAM_PERF_STEP, SAM_MIN_CONTEXTS);
-		 
+					   && apps_sorted[j]->exploring) || (apps_sorted[j]->hill_resume) ) {
+					  
+					     if(apps_sorted[j]->hill_resume==true)  {
+
+						     /*Resume in the stored direction*/
+                                                         printf("[APP %6d] resuming in the same direction \n", apps_sorted[j]->pid);
+                                                          if(apps_sorted[j]->hill_direction==1)  {
+                                                                 per_app_cpu_budget[j]= MIN(per_app_cpu_budget[j] + SAM_PERF_STEP, cpuinfo->total_cpus);
+								  
+		                                            }
+	                                                    else {
+                                                                  per_app_cpu_budget[j]= MAX(per_app_cpu_budget[j] - SAM_PERF_STEP, SAM_MIN_CONTEXTS);
+	                                                    						    
+                                                            }
+                                               
+                                                apps_sorted[j]->hill_resume=false;
+                                                apps_sorted[j]->exploring=true; 
+						//In the next iteration the resume will be false and exploration will be true which will branch to the else as normal 
+					      }
+				              else   {	      
+					    		 /*Keep going in the same direction*/
+                                         		 printf("[APP %6d] continuing in the same direction \n", apps_sorted[j]->pid);
+                                         		 if (prev_alloc_len < curr_alloc_len) { 
+						 		 per_app_cpu_budget[j]= MIN(per_app_cpu_budget[j] + SAM_PERF_STEP, cpuinfo->total_cpus);
+				            	 		 apps_sorted[j]->hill_direction=1;  //positive direction
+					 		 }		  
+				         		else { 
+								 per_app_cpu_budget[j]= MAX(per_app_cpu_budget[j] - SAM_PERF_STEP, SAM_MIN_CONTEXTS);
+		                                		apps_sorted[j]->hill_direction=-1; //negative direction
+					  			 }
+					      }//else close	   
 
 		                      } //if curr_perf > prev_perf close	     
                                       else
@@ -886,7 +927,8 @@ int main(int argc, char *argv[])
 					 		 //performance degrades , found local optima
 					 			//revert to previous configuration and check for dynamic change of landscape
                                            			 per_app_cpu_budget[j]= prev_alloc_len;
-                                        			 apps_sorted[j]->exploring=false;
+								 printf("[APP %6d] found local optima, suspending exploration \n", apps_sorted[j]->pid);
+                                        			 apps_sorted[j]->exploring=false; //suspend exploration for a certain number of iterations and keep track of direction
 						      }//if close
 					                                            
 					     
