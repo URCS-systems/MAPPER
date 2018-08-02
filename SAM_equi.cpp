@@ -58,6 +58,7 @@
 #define PRINT_COUNT false 
 #define PRINT_BOTTLENECK false
 #define HILL_CLIMBING false
+#define ORIGINAL true
 // Will be initialized anyway
 int num_counter_orders = 6;
 int random_seed = 0xFACE;
@@ -820,6 +821,101 @@ int main(int argc, char *argv[])
                     //per_app_cpu_budget[j] = MAX((int) apps_sorted[j]->bottleneck[METRIC_ACTIVE], SAM_MIN_CONTEXTS);
                     per_app_cpu_budget[j] = curr_alloc_len;
 
+
+
+		    if (HILL_CLIMBING)  {
+                 /* Insert Hill Climbing logic here, if curr_perf is greater than pref_perf then keep on going until performance decreases, then stop*/
+                          //If application has been already given an allocation   
+                           if (apps_sorted[j]->times_allocated > SAM_INITIAL_ALLOCS) {
+                               /*compute performance history*/
+			      uint64_t history[2];
+		              memcpy(history, apps_sorted[j]->perf_history[curr_alloc_len], sizeof history);
+		              history[1]++;
+	       		      history[0]=apps_sorted[j]->extra_metric[EXTRA_METRIC_IPS] * (1/(double)history[1]) +
+		                 history[0]* ((history[1]-1)/(double)history[1]);
+                              /*
+			       * Change application's fair share count if the creation of new applications
+			       * change the fair share.
+			       */
+                               if (apps_sorted[j]->curr_fair_share !=fair_share && 
+					   apps_sorted[j]->perf_history[fair_share] != 0)
+				       apps_sorted[j]->curr_fair_share=fair_share;
+
+			       uint64_t curr_perf= history[0];
+
+			       if (apps_sorted[j]->times_allocated > 1 ) {
+
+                                  /*
+				   * Compare current performance with previous performance, if this application
+				   * has at least two items in history.
+				   */
+                                   int prev_alloc_len= CPU_COUNT_S(rem_cpus_sz, apps_sorted[j]->cpuset[1]);
+				   uint64_t prev_perf= apps_sorted[j]->perf_history[prev_alloc_len][0];
+
+				   /*
+				    * Hill climbing decision making
+				    */
+
+                                       if(apps_sorted[j]->exploring==false) {
+                                         //saturated at local optima, need to look at new chnages in landscape in both directions
+					 //can't rely on previous history as applicatoion behaviour has changed
+					 //need to actually assign resources in both directions and decide whether performance has changed or not
+                                                             
+
+				       }//if close
+
+
+                                     if (curr_perf > prev_perf 
+				           && (curr_perf - prev_perf) / (double) prev_perf >= SAM_PERF_THRESH
+					   && apps_sorted[j]->exploring) {
+					  /*Keep going in the same direction*/
+                                          printf("[APP %6d] continuing in the same direction \n", apps_sorted[j]->pid);
+                                          if (prev_alloc_len < curr_alloc_len)
+					     per_app_cpu_budget[j]= MIN(per_app_cpu_budget[j] + SAM_PERF_STEP, cpuinfo->total_cpus);
+				         else
+				             per_app_cpu_budget[j]= MAX(per_app_cpu_budget[j] - SAM_PERF_STEP, SAM_MIN_CONTEXTS);
+		 
+
+		                      } //if curr_perf > prev_perf close	     
+                                      else
+				      {  
+					      if (curr_perf < prev_perf 
+							      && (prev_perf - curr_perf) / (double) prev_perf > SAM_PERF_THRESH) {
+                                            		
+						      if(apps_sorted[j]->exploring==true) {
+					 		 //performance degrades , found local optima
+					 			//revert to previous configuration and check for dynamic change of landscape
+                                           			 per_app_cpu_budget[j]= prev_alloc_len;
+                                        			 apps_sorted[j]->exploring=false;
+						      }//if close
+					                                            
+					     
+					      }//if close
+
+				      } //else close      
+                                   
+
+                          /*save performance history */
+ memcpy(apps_sorted[j]->perf_history[curr_alloc_len], history, sizeof apps_sorted[j]->perf_history[curr_alloc_len]); 
+						;		    
+			       } //if apps_sorted[j]->times_allocate close
+  
+
+                            }//if application already alloted resources close
+			   else
+			      {	     /* If this app has never been given an allocation, the first allocation we should
+				        give it is the fair share.
+				       */
+				     per_app_cpu_budget[j] = fair_share;
+			             printf("[APP %6d] Setting fair share \n", apps_sorted[j]->pid);
+			       }//else close
+
+
+
+
+	            }//if HILL_CLIMBING close		    
+
+		 if(ORIGINAL) {   
                     /*
                      * If this app has already been given an allocation, then we can compute history
                      * and excess cores.
@@ -849,32 +945,7 @@ int main(int argc, char *argv[])
                              */
                             int prev_alloc_len = CPU_COUNT_S(rem_cpus_sz, apps_sorted[j]->cpuset[1]);
                             uint64_t prev_perf = apps_sorted[j]->perf_history[prev_alloc_len][0];
-                            /* Insert Hill Climbing logic here, if curr_perf
-                             * is greater than pref_perf then keep on going
-                             * until performance decreases, then stop*/
-
-                            /* Core logic remains the same */
-                            if (HILL_CLIMBING) {
-                                if (curr_perf > prev_perf && (curr_perf -prev_perf) 
-                                        / (double) prev_perf >= SAM_PERF_THRESH && apps_sorted[j]->exploring)  {
-
-                                    //keep on going in this direction
-                                    if (prev_alloc_len < curr_alloc_len)
-                                        per_app_cpu_budget[j]= MIN(per_app_cpu_budget[j] + SAM_PERF_STEP, cpuinfo->total_cpus);
-                                    else
-                                        per_app_cpu_budget[j]= MAX(per_app_cpu_budget[j] - SAM_PERF_STEP, cpuinfo->total_cpus);   
-
-                                } else {
-                                    if (curr_perf < prev_perf && (prev_perf -curr_perf) / (double) prev_perf >= SAM_PERF_THRESH)
-                                    {  //revert to previous configuration as stop exploring (set exploring to some value)
-                                        per_app_cpu_budget[j]=prev_alloc_len;
-                                        //go back to previous perf configuration and stay there 
-                                        //the entire time for the application execution
-                                        apps_sorted[j]->exploring=false;
-                                        //no random disturbance should be introduced
-                                    }         
-                                }
-                            }
+                            
 
                             /*
                              * Original decision making:
@@ -944,8 +1015,8 @@ int main(int argc, char *argv[])
                         per_app_cpu_budget[j] = fair_share;
                         printf("[APP %6d] Setting fair share \n", apps_sorted[j]->pid);
                     }
-
-                    // }//else of hill climbing
+            
+             }//ORIGINAL close
 
                     printf("[APP %6d] Requiring %d / %d remaining CPUs\n", 
                             apps_sorted[j]->pid,
