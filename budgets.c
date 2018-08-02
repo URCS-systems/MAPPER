@@ -292,64 +292,12 @@ budget_default(cpu_set_t *old_cpuset, cpu_set_t *new_cpuset,
                cpu_set_t *remaining_cpus, const size_t cpus_sz,
                int per_app_cpu_budget)
 {
-    int s = -1;
-    int i = 0, j = 0;
-    cpu_set_t *old_cpuset2 = NULL;
-    int k = 0;
-
-    for (int sock_id = 0; sock_id < cpuinfo->num_sockets && s == -1; ++sock_id) {
-        for (int c = 0; c < cpuinfo->sockets[sock_id].num_cpus && s == -1; ++c) {
-            struct cpu hw = cpuinfo->sockets[sock_id].cpus[c];
-            if (CPU_ISSET_S(hw.tnumber, cpus_sz, old_cpuset)
-                && CPU_ISSET_S(hw.tnumber, cpus_sz, remaining_cpus))
-                s = sock_id;
-        }
-    }
-
-    /* search again if no CPUs */
-    for (int sock_id = 0; sock_id < cpuinfo->num_sockets && s == -1; ++sock_id) {
-        for (int c = 0; c < cpuinfo->sockets[sock_id].num_cpus && s == -1; ++c) {
-            struct cpu hw = cpuinfo->sockets[sock_id].cpus[c];
-            if (CPU_ISSET_S(hw.tnumber, cpus_sz, remaining_cpus))
-                s = sock_id;
-        }
-    }
-
-    assert(s != -1);
-
-    while (i < cpuinfo->num_sockets && j < per_app_cpu_budget) {
-        for (int c = 0; c < cpuinfo->sockets[s].num_cpus 
-                && j < per_app_cpu_budget; ++c) {
-            struct cpu hw = cpuinfo->sockets[s].cpus[c];
-            
-            if (CPU_ISSET_S(hw.tnumber, cpus_sz, remaining_cpus)) {
-                CPU_SET_S(hw.tnumber, cpus_sz, new_cpuset);
-                j++;
-            }
-        }
-        s = (s + 1) % cpuinfo->num_sockets;
-        i++;
-    }
-
-    if (curr_bottleneck == prev_bottleneck) {
-        old_cpuset2 = CPU_ALLOC(cpuinfo->total_cpus);
-        CPU_ZERO_S(cpus_sz, old_cpuset2);
-
-        CPU_AND_S(cpus_sz, old_cpuset2, old_cpuset, remaining_cpus);
-        k = CPU_COUNT_S(cpus_sz, old_cpuset2);
-
-        if (k > per_app_cpu_budget) {
-            cpu_truncate(old_cpuset2, cpuinfo->total_cpus, per_app_cpu_budget);
-            k = CPU_COUNT_S(cpus_sz, old_cpuset2);
-        }
-
-        if (k >= j) {
-            memcpy(new_cpuset, old_cpuset2, cpus_sz);
-        }
-
-        CPU_FREE(old_cpuset2);
-    }
+    budget_no_hyperthread(old_cpuset, new_cpuset,
+            curr_bottleneck, prev_bottleneck,
+            remaining_cpus, cpus_sz,
+            per_app_cpu_budget);
 }
+
 budgeter_t budgeter_functions[] = {
     [METRIC_INTER]      = &budget_collocate,
     [METRIC_INTRA]      = &budget_collocate,
