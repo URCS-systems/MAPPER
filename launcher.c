@@ -37,6 +37,8 @@ int main(int argc, char *argv[])
 {
     char cmdbuf[1024];
     int p = 0;
+    int childret = 0;
+    int childsig = 0;
 
     if (argc < 2) {
         fprintf(stderr, "usage: %s program [arguments]\n", argv[0]);
@@ -116,10 +118,12 @@ int main(int argc, char *argv[])
         } while (wpid == 0 && waited < timeouttokill);
 
         if (WIFEXITED(status)) {
-            printf("Child exited, status=%d\n", WEXITSTATUS(status));
+            childret = WEXITSTATUS(status);
+            printf("Child exited, status=%d\n", childret);
         } else if (WIFSIGNALED(status)) {
-            printf("Child %d was terminated with a status of: %d \n", initial_pid,
-                   WTERMSIG(status));
+            childsig = WTERMSIG(status);
+            printf("Child %d was terminated with a status of: %d \n", 
+                    initial_pid, childsig);
         }
 
         if (rmdir(app_path) != 0) {
@@ -128,4 +132,9 @@ int main(int argc, char *argv[])
         if (cg_remove_cgroup(cgroup_root, controller, cg_name) != 0)
             perror("Failed to remove cgroup");
     }
+
+    if (childsig)
+        raise(childsig);
+
+    return childret;
 }
