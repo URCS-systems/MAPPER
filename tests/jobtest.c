@@ -27,7 +27,7 @@ void handle_quit(int sig) {
     for (int i = 0; i < num_jobs; ++i)
         if (jobs[i].pid != 0)
             kill(jobs[i].pid, SIGTERM);
-    sleep(1);
+    sleep(2);
     for (int i = 0; i < num_jobs; ++i)
         if (jobs[i].pid != 0)
             kill(jobs[i].pid, SIGKILL);
