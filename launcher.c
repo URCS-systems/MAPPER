@@ -16,6 +16,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #include <string.h>
+#include <signal.h>
 
 #include "config.h"
 #include "cgroup.h"
@@ -23,6 +24,14 @@
 const char *cgroup_root = "/sys/fs/cgroup";
 const char *controller = "cpuset";
 char cg_name[512];
+pid_t initial_pid;
+
+void handle_quit(int sig) {
+    printf("Received: %s\n", strsignal(sig));
+    kill(initial_pid, SIGTERM);
+    sleep(2);
+    kill(initial_pid, SIGKILL);
+}
 
 int main(int argc, char *argv[])
 {
@@ -40,7 +49,12 @@ int main(int argc, char *argv[])
 
     printf("Command to be executed: %s\n", cmdbuf);
 
-    pid_t initial_pid = fork();
+    initial_pid = fork();
+
+    if (initial_pid == (pid_t) -1) {
+        perror("fork()");
+        return 1;
+    }
 
     if (initial_pid == 0) {
         /* Now launch the command from this process */
@@ -78,6 +92,10 @@ int main(int argc, char *argv[])
 
         free(mems_string);
         free(cpus_string);
+
+        signal(SIGTERM, &handle_quit);
+        signal(SIGQUIT, &handle_quit);
+        signal(SIGINT, &handle_quit);
 
         /* Wait and exit */
         int timeouttokill = 3600;
