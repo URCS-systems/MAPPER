@@ -1006,11 +1006,10 @@ int main(int argc, char *argv[])
                                     spare_candidates[num_spare_candidates] = apps_sorted[l];
                                     spare_candidates_map[apps_sorted[l]->appno] = l;
                                     num_spare_candidates++;
-                                } else {
-                                    candidates[num_candidates] = apps_sorted[l];
-                                    candidates_map[apps_sorted[l]->appno] = l;
-                                    num_candidates++;
                                 }
+                                candidates[num_candidates] = apps_sorted[l];
+                                candidates_map[apps_sorted[l]->appno] = l;
+                                num_candidates++;
                             }
                         }
 
