@@ -17,6 +17,7 @@ struct job {
     int argc;
     char *argv[ARG_MAX];
     pid_t pid;
+    int status;
 };
 
 int num_jobs;
@@ -25,11 +26,11 @@ struct job jobs[MAX_JOBS];
 void handle_quit(int sig) {
     printf("Received signal: %s\n", strsignal(sig));
     for (int i = 0; i < num_jobs; ++i)
-        if (jobs[i].pid != 0)
+        if (jobs[i].pid > 0)
             kill(jobs[i].pid, SIGTERM);
     sleep(2);
     for (int i = 0; i < num_jobs; ++i)
-        if (jobs[i].pid != 0)
+        if (jobs[i].pid > 0)
             kill(jobs[i].pid, SIGKILL);
 }
 
@@ -136,14 +137,14 @@ int main(int argc, char *argv[]) {
             clock_gettime(CLOCK_MONOTONIC_RAW, &jobs[i].start);
     }
 
-    int wstatus;
     pid_t pid;
+    int wstatus;
     while (!((pid = waitpid(-1, &wstatus, 0)) == -1 && errno == ECHILD)) {
         int i = find_job_id_by_pid(pid);
         if (i == -1)
             continue;
         clock_gettime(CLOCK_MONOTONIC_RAW, &jobs[i].end);
-        jobs[i].pid = 0;
+        jobs[i].status = wstatus;
     }
 
     printf("Summary:\n");
@@ -158,9 +159,15 @@ int main(int argc, char *argv[]) {
         }
 
         int n = 0;
-        printf(" %.55s:%n", jobs[i].argbuf, &n);
-        printf("%*lf s\n", 70 - n - 2,
+        printf(" %.55s: %n", jobs[i].argbuf, &n);
+        printf("%*lf s", 69 - n - 2,
                 diff_ts.tv_sec + (double) diff_ts.tv_nsec / 1e+9);
+        if (WIFEXITED(jobs[i].status) && WEXITSTATUS(jobs[i].status) != 0) {
+            printf(" (ret %3d)\n", WEXITSTATUS(jobs[i].status));
+        } else if (WIFSIGNALED(jobs[i].status)) {
+            printf(" (%7s)\n", strsignal(WTERMSIG(jobs[i].status)));
+        } else
+            printf("\n");
     }
 
     return 0;
