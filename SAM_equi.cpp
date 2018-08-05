@@ -792,7 +792,7 @@ int main(int argc, char *argv[])
 
         if (num_apps > 0) {
             const float budget_f = cpuinfo->total_cpus / (float)num_apps;
-            const int fair_share = MAX(ceilf(budget_f), SAM_MIN_CONTEXTS);
+            const int fair_share = MAX(floorf(budget_f), SAM_MIN_CONTEXTS);
             struct appinfo **apps_unsorted = (struct appinfo **)calloc(num_apps, sizeof *apps_unsorted);
             struct appinfo **apps_sorted = (struct appinfo **)calloc(num_apps, sizeof *apps_sorted);
             int *per_app_cpu_budget = (int *) calloc(num_apps, sizeof *per_app_cpu_budget);
