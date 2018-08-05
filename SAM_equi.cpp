@@ -184,7 +184,9 @@ struct appinfo {
     int hill_direction; 	/* 1 means positive direction, -1 means negative direction, store direction in order to resume*/
     int suspend_iter;  		/*count the number of iterations suspended*/
     bool hill_resume; 		/* whether resuming hill climbing or not*/
+  
     int bin_search_resource; /*resource allocated*/
+    int bin_direction;
 };
 
 bool stoprun = false;
@@ -767,8 +769,9 @@ int main(int argc, char *argv[])
 	    an->hill_direction=1; /* 1 means positive direction, -1 means negative direction, store direction in order to resume*/
             an->suspend_iter=0;  /*count the number of iterations suspended*/
             an->hill_resume=false;
-	    an->bin_search_resource= BIN_INITIAL_RESOURCE;
-       
+	
+	   an->bin_search_resource= BIN_INITIAL_RESOURCE;
+           an->bin_direction=1;
 	}
 
         /* map applications */
@@ -842,15 +845,16 @@ int main(int argc, char *argv[])
                         /*Insert Binary search logic here, if curr-perf is greater than prev_perf then keep reducing serach spas
                          *Binary search requires array to be sorted, this is not pure binary serach, 
                          */
-                        // int bin_search_resource=12;
-
+                                //Find three history and then look for which way to go
                         if(apps_sorted[j]->times_allocated > SAM_INITIAL_ALLOCS) {
 
+		            //compute history of 2 past iterval		
                             uint64_t history[2];
                             memcpy(history, apps_sorted[j]->perf_history[curr_alloc_len], sizeof history);
                             history[1]++;
                             history[0]=apps_sorted[j]->extra_metric[EXTRA_METRIC_IPS] * (1/(double)history[1]) +
                                 history[0]* ((history[1]-1)/(double)history[1]);
+			    
                             /*
                              * Change application's fair share count if the creation of new applications
                              * change the fair share.
@@ -859,7 +863,8 @@ int main(int argc, char *argv[])
                                 apps_sorted[j]->curr_fair_share=fair_share;
 
                             uint64_t curr_perf= history[0];
-
+                             
+			    //if has atleast two items in history
                             if (apps_sorted[j]->times_allocated > 1 ) {
                                 /* Compare current performance with previous performance, if this application
                                  * has at least two items in history.
@@ -872,11 +877,13 @@ int main(int argc, char *argv[])
                                     /* Performance increases the incease resource again
                                      * and keep going
                                      */
-                                    if (prev_alloc_len < curr_alloc_len)
-                                        per_app_cpu_budget[j] = MIN(per_app_cpu_budget[j] + apps_sorted[j]->bin_search_resource, cpuinfo->total_cpus);
-                                    else
-                                        per_app_cpu_budget[j] = MAX(per_app_cpu_budget[j] - apps_sorted[j]->bin_search_resource, SAM_MIN_CONTEXTS);
-
+                                    if (prev_alloc_len < curr_alloc_len) {
+		        per_app_cpu_budget[j] = MIN(per_app_cpu_budget[j] + apps_sorted[j]->bin_search_resource, cpuinfo->total_cpus);
+				   apps_sorted[j]->bin_direction=1;
+				    } else{
+                               per_app_cpu_budget[j] = MAX(per_app_cpu_budget[j] - apps_sorted[j]->bin_search_resource, SAM_MIN_CONTEXTS);
+			         apps_sorted[j]->bin_direction=-1;
+                               }
 
                                 } //if curr_perf_perf? prev_perf close
                                 else {            
@@ -893,8 +900,20 @@ int main(int argc, char *argv[])
                                     }//if close
                                 } //else close	 
                                 /*save performance history */
-                                memcpy(apps_sorted[j]->perf_history[curr_alloc_len], history, sizeof apps_sorted[j]->perf_history[curr_alloc_len]);				 
+                           memcpy(apps_sorted[j]->perf_history[curr_alloc_len], history, sizeof apps_sorted[j]->perf_history[curr_alloc_len]);				 
                             }//if times_allocated> 1 close
+			    else {
+
+				    //don't guess, go in the set direction to create history
+				    if(apps_sorted[j]->bin_direction==1)   {
+
+			             }
+		                     else {
+			              		     
+                                  
+                                     }
+
+			    }//else close
 
                         }// if times_allocated SAM_INITIAL close
                         else {
