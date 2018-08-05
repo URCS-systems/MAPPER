@@ -1004,24 +1004,37 @@ int main(int argc, char *argv[])
                                             && (prev_perf - curr_perf) / (double) prev_perf > SAM_PERF_THRESH) {
 
                                         if(apps_sorted[j]->exploring==true) {
-                                            //performance degrades , found local optima
+                                            //performance degrades 
                                             //revert to previous configuration and check for dynamic change of landscape
                                             per_app_cpu_budget[j]= prev_alloc_len;
+                                            
+                                         }//if close
+			                 else { 
+
+                                       //guess direction and move to make history
+                                             
+                                             int guess = per_app_cpu_budget[j] + guess_optimization(per_app_cpu_budget[j], counter_order[i]);
+			                     guess = MAX(MIN(guess, cpuinfo->total_cpus), SAM_MIN_CONTEXTS);
+			                     apps_sorted[j]->exploring = true;
+			                      per_app_cpu_budget[j] = guess;
+						                      
+                                              }//else close
+			            printf("[APP %6d] exploring %d -> %d\n", apps_sorted[j]->pid,curr_alloc_len, per_app_cpu_budget[j]);
+                                     }//if close
+                                    else   {
+                                        
                                             printf("[APP %6d] found local optima, suspending exploration \n", apps_sorted[j]->pid);
                                             apps_sorted[j]->exploring=false; //suspend exploration for a certain number of iterations and keep track of direction
-                                        }//if close
+                                        
 
+                                         }
+                                   } //else close      
 
-                                    }//if close
-
-                                } //else close      
-
-
-                                /*save performance history */
-                                memcpy(apps_sorted[j]->perf_history[curr_alloc_len], history, sizeof apps_sorted[j]->perf_history[curr_alloc_len]); 
+                              /*save performance history */
+                        memcpy(apps_sorted[j]->perf_history[curr_alloc_len], history, sizeof apps_sorted[j]->perf_history[curr_alloc_len]); 
 
                             } //if apps_sorted[j]->times_allocate close
-
+                            
 
                         }//if application already alloted resources close
                         else
