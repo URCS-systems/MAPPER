@@ -18,6 +18,7 @@
 #include <sys/resource.h>
 #include <unistd.h>
 #include <math.h>
+#include <limits.h>
 
 #include <locale.h>
 #include <sched.h>
@@ -244,6 +245,13 @@ static int compare_apps_by_extra_metric_desc(const void *a_ptr, const void *b_pt
 
     return (int)((long)b->extra_metric[met] - (long)a->extra_metric[met]);
 }
+
+static int compare_ints_mapped(const void *arg1, const void *arg2, void *ptr)
+{
+    const int *map = (const int *) ptr;
+    return map[*(const int *) arg1] < map[*(const int *) arg2];
+}
+
 
 void sigterm_handler(int sig) { stoprun = true; }
 void siginfo_handler(int sig) { print_counters = !print_counters; }
@@ -791,6 +799,7 @@ int main(int argc, char *argv[])
             cpu_set_t **new_cpusets = (cpu_set_t **) calloc(num_apps, sizeof *new_cpusets);
             int *needs_more = (int *) calloc(num_apps, sizeof *needs_more);
             int initial_remaining_cpus = cpuinfo->total_cpus;
+            int **per_app_socket_orders = (int **) calloc(num_apps, sizeof *per_app_socket_orders);
             char buf[256];
 
             int range_ends[N_METRICS + 1] = {0};
@@ -799,6 +808,7 @@ int main(int argc, char *argv[])
                 int i = 0;
                 for (struct appinfo *an = apps_list; an; an = an->next) {
                     apps_unsorted[i] = an;
+                    per_app_socket_orders[i] = (int *) calloc(cpuinfo->num_sockets, sizeof *per_app_socket_orders[i]);
                     i++;
                 }
             }
@@ -1309,6 +1319,50 @@ int main(int argc, char *argv[])
                         delete[] spare_candidates;
                         delete[] spare_candidates_map;
                     }
+
+                    /*
+                     * Here we compute the precedence for locating threads in a socket.
+                     * If an application is already in this socket, the precedence is increased.
+                     * If another application is in this socket, the precedence is reduced.
+                     */
+                    for (int k = j + 1; k < num_apps; ++k) {
+                        for (int s = 0; s < cpuinfo->num_sockets; ++s) {
+                            for (int c = 0; c < cpuinfo->sockets[s].num_cpus; ++c) {
+                                struct cpu hw = cpuinfo->sockets[s].cpus[c];
+
+                                if (CPU_ISSET_S(hw.tnumber, rem_cpus_sz, apps_sorted[k]->cpuset[0])) {
+                                    per_app_socket_orders[j][s]++;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+
+                    int temp[cpuinfo->num_sockets];
+                    int socket = -1;
+
+                    for (int s = 0; s < cpuinfo->num_sockets; ++s)
+                        for (int c = 0; c < cpuinfo->sockets[s].num_cpus; ++c) {
+                            struct cpu hw = cpuinfo->sockets[s].cpus[c];
+
+                            if (CPU_ISSET_S(hw.tnumber, rem_cpus_sz, apps_sorted[j]->cpuset[0])) {
+                                per_app_socket_orders[j][s]--;
+                                if (socket == -1)
+                                    socket = s;
+                            }
+                        }
+
+                    if (socket != -1)
+                        per_app_socket_orders[j][socket] = INT_MIN;
+
+                    for (int s = 0; s < cpuinfo->num_sockets; ++s)
+                        temp[s] = s;
+
+                    qsort_r(temp, cpuinfo->num_sockets, sizeof temp[0],
+                            &compare_ints_mapped, per_app_socket_orders[j]);
+
+                    memcpy(per_app_socket_orders[j], temp, 
+                            cpuinfo->num_sockets * sizeof *per_app_socket_orders[j]);
                 }
             }
 
@@ -1334,12 +1388,14 @@ int main(int argc, char *argv[])
                         (*budgeter_functions[met])(apps_sorted[j]->cpuset[0], new_cpuset, 
                                 apps_sorted[j]->curr_bottleneck,
                                 apps_sorted[j]->prev_bottleneck,
-                                remaining_cpus, rem_cpus_sz, per_app_cpu_budget[j]);
+                                remaining_cpus, rem_cpus_sz, per_app_cpu_budget[j],
+                                per_app_socket_orders[j]);
                     } else {
                         budget_default(apps_sorted[j]->cpuset[0], new_cpuset, 
                                 apps_sorted[j]->curr_bottleneck,
                                 apps_sorted[j]->prev_bottleneck,
-                                remaining_cpus, rem_cpus_sz, per_app_cpu_budget[j]);
+                                remaining_cpus, rem_cpus_sz, per_app_cpu_budget[j],
+                                per_app_socket_orders[j]);
                     }
 
                     /* subtract allocated cpus from remaining cpus,
@@ -1413,6 +1469,7 @@ int main(int argc, char *argv[])
                     CPU_FREE(new_cpusets[j]);
                     free(mybudget);
                     free(intlist);
+                    free(per_app_socket_orders[j]);
                 }
             }
 
@@ -1421,6 +1478,7 @@ int main(int argc, char *argv[])
             free(apps_sorted);
             free(per_app_cpu_budget);
             free(needs_more);
+            free(per_app_socket_orders);
         }
 
         CPU_FREE(remaining_cpus);
