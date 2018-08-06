@@ -14,27 +14,19 @@
 int cg_create_cgroup(const char *root,
                      const char *controller,
                      const char *path) {
-    int ret = 0;
     char file_path[256];
     snprintf(file_path, sizeof file_path, "%s/%s/%s", root, controller, path);
 
-    if (mkdir(file_path, 01777) < 0)
-        ret = -1;
-
-    return ret;
+    return mkdir(file_path, 01777);
 }
 
 int cg_remove_cgroup(const char *root,
                      const char *controller,
                      const char *path) {
-    int ret = 0;
     char file_path[256];
     snprintf(file_path, sizeof file_path, "%s/%s/%s", root, controller, path);
 
-    if (rmdir(file_path) < 0)
-        ret = -1;
-
-    return ret;
+    return rmdir(file_path);
 }
 
 int cg_write_intlist(const char *root,
@@ -46,7 +38,6 @@ int cg_write_intlist(const char *root,
     snprintf(file_path, sizeof file_path, "%s/%s/%s/%s", root, controller, path, param);
 
     FILE *fp = fopen(file_path, "w");
-    int ret = 0;
     int err = 0;
 
     if (!fp)
@@ -56,14 +47,14 @@ int cg_write_intlist(const char *root,
 
     intlist_to_string(values, length, buf, sizeof buf, ",");
 
-    if (fprintf(fp, "%s", buf) != (int) strlen(buf)) {
-        ret = -1;
+    if (fprintf(fp, "%s", buf) != (int) strlen(buf))
         err = errno;
-    }
 
-    fclose(fp);
+    if (fclose(fp) < 0)
+        err = errno;
+
     errno = err;
-    return ret;
+    return errno ? -1 : 0;
 }
 
 int cg_write_string(const char *root, 
@@ -75,26 +66,21 @@ int cg_write_string(const char *root,
     va_list args;
 
     FILE *fp = fopen(file_path, "w");
-    int ret = 0;
     int err = 0;
 
     if (!fp)
-        return errno;
+        return -1;
 
     va_start(args, fmt);
-    if (vfprintf(fp, fmt, args) < 0) {
-        ret = -1;
+    if (vfprintf(fp, fmt, args) < 0)
         err = errno;
-    }
-    if (ferror(fp) != 0) {
-        ret = -1;
-        err = errno;
-    }
 
     va_end(args);
-    fclose(fp);
+    if (fclose(fp) < 0)
+        err = errno;
+
     errno = err;
-    return ret;
+    return errno ? -1 : 0;
 }
 
 int cg_write_bool(const char *root,
@@ -105,20 +91,19 @@ int cg_write_bool(const char *root,
     snprintf(file_path, sizeof file_path, "%s/%s/%s/%s", root, controller, path, param);
 
     FILE *fp = fopen(file_path, "w");
-    int ret = 0;
     int err = 0;
 
     if (!fp)
         return -1;
 
-    if (fprintf(fp, "%d", value) < 0) {
-        ret = -1;
+    if (fprintf(fp, "%d", value) < 0)
         err = errno;
-    }
 
-    fclose(fp);
+    if (fclose(fp) < 0)
+        err = errno;
+
     errno = err;
-    return ret;
+    return errno ? -1 : 0;
 }
 
 int cg_read_int(const char *root,
@@ -129,20 +114,19 @@ int cg_read_int(const char *root,
     snprintf(file_path, sizeof file_path, "%s/%s/%s/%s", root, controller, path, param);
 
     FILE *fp = fopen(file_path, "r");
-    int ret = 0;
     int err = 0;
 
     if (!fp)
         return -1;
 
-    if (fscanf(fp, "%d", value_in) < 1) {
+    if (fscanf(fp, "%d", value_in) < 1)
         err = errno;
-        ret = -1;
-    }
 
-    fclose(fp);
+    if (fclose(fp) < 0)
+        err = errno;
+
     errno = err;
-    return ret;
+    return errno ? -1 : 0;
 }
 
 int cg_read_string(const char *root,
@@ -153,20 +137,19 @@ int cg_read_string(const char *root,
     snprintf(file_path, sizeof file_path, "%s/%s/%s/%s", root, controller, path, param);
 
     FILE *fp = fopen(file_path, "r");
-    int ret = 0;
     int err = 0;
 
     if (!fp)
         return -1;
 
-    if (fscanf(fp, "%ms", value_in) < 1) {
-        ret = -1;
+    if (fscanf(fp, "%ms", value_in) < 1)
         err = errno;
-    }
 
-    fclose(fp);
+    if (fclose(fp) < 0)
+        err = errno;
+
     errno = err;
-    return ret;
+    return errno ? -1 : 0;
 }
 
 int cg_read_intlist(const char *root,
@@ -177,7 +160,6 @@ int cg_read_intlist(const char *root,
     snprintf(file_path, sizeof file_path, "%s/%s/%s/%s", root, controller, path, param);
 
     FILE *fp = fopen(file_path, "r");
-    int ret = 0;
     int err = 0;
     char *buf = NULL;
 
@@ -249,15 +231,15 @@ int cg_read_intlist(const char *root,
         *length_in = length;
     } else {
 error:
-        ret = -1;
         err = errno;
         *value_in = (int*) realloc(*value_in, 0);
         *length_in = 0;
     }
 
     free(buf);
-    fclose(fp);
+    if (fclose(fp) < 0)
+        err = errno;
     errno = err;
-    return ret;
+    return errno ? -1 : 0;
 }
 
