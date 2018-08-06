@@ -1353,7 +1353,7 @@ int main(int argc, char *argv[])
 
                     for (int s = 0; s < cpuinfo->num_sockets; ++s) {
                         temp[s] = s;
-					}
+                    }
 
                     qsort_r(temp, cpuinfo->num_sockets, sizeof temp[0],
                             &compare_ints_mapped, per_app_socket_orders[j]);
@@ -1361,11 +1361,11 @@ int main(int argc, char *argv[])
                     memcpy(per_app_socket_orders[j], temp, 
                             cpuinfo->num_sockets * sizeof *per_app_socket_orders[j]);
 
-					printf("App score: %d:  ", apps_sorted[j]->pid);									
-					for (int s = 0; s < cpuinfo->num_sockets; ++s) {
-						printf(" %d ", per_app_socket_orders[j][s]);
-					}
-					printf ("\n");
+                    printf("App score: %d:  ", apps_sorted[j]->pid);									
+                    for (int s = 0; s < cpuinfo->num_sockets; ++s) {
+                        printf(" %d ", per_app_socket_orders[j][s]);
+                    }
+                    printf ("\n");
 
                 }
             }
