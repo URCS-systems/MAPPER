@@ -6,29 +6,26 @@
 #include <stdbool.h>
 #include <assert.h>
 #include <errno.h>
-#define PRINT false
+#define PRINT true
 
 uint64_t event_codes[N_EVENTS] = {
-    [EVENT_UNHALTED_CYCLES] = 0x3c,
+    [EVENT_SNP]		    = 0x06d2,
     [EVENT_INSTRUCTIONS]    = 0xc0,
-    [EVENT_REMOTE_HITM]     = 0x10d3,
-    [EVENT_REMOTE_DRAM]     = 0x04d3,
+    [EVENT_REMOTE_HITM]     = 0x10d3,    
+    
+    [EVENT_UNHALTED_CYCLES] = 0x3c,
     [EVENT_LLC_MISSES]      = 0x412e,
-    [EVENT_L2_MISSES]       = 0x10d1,
-    [EVENT_L3_MISSES]       = 0x04d1,
-    [EVENT_L3_HIT]          = 0x20d1,
+    
 };
 
 
 const char *event_names[N_EVENTS] = {
-    [EVENT_UNHALTED_CYCLES]     = "cycles (unhalted)",
+    [EVENT_SNP]                 = "Local snoops",	
     [EVENT_INSTRUCTIONS]        = "instructions",
     [EVENT_REMOTE_HITM]         = "remote-hitm",
-    [EVENT_REMOTE_DRAM]         = "remote-dram",
+    [EVENT_UNHALTED_CYCLES]     = "cycles (unhalted)",
     [EVENT_LLC_MISSES]          = "LLC misses",
-    [EVENT_L2_MISSES]           = "L2 misses",
-    [EVENT_L3_MISSES]           = "L3 misses",
-    [EVENT_L3_HIT]              = "L3 hit"
+        
 };
 
 struct perf_stat *threads = NULL;
@@ -49,7 +46,7 @@ void setPerfAttr(struct perf_event_attr *pea, enum perf_event event, int group_f
     pea->type = PERF_TYPE_RAW;
     pea->size = sizeof(struct perf_event_attr);
     pea->config = event_codes[event];
-    pea->disabled = 1;
+    pea->disabled = 1;  //set to 0 when not using start stop
     // pea[cpu].exclude_kernel=1;
     // pea[cpu].exclude_hv=1;
     pea->read_format = PERF_FORMAT_GROUP | PERF_FORMAT_ID;
@@ -70,11 +67,11 @@ void start_event(int fd)
     }
 }
 
-void stop_read_counters(struct read_format *rf, int fd, int fd2, char *buf, size_t size, uint64_t *val1,
-                        uint64_t *val2, uint64_t id1, uint64_t id2)
+void stop_read_counters(struct read_format *rf, int fd, int fd2, int fd3, char *buf, size_t size, uint64_t *val1,
+                        uint64_t *val2, uint64_t *val3, uint64_t id1, uint64_t id2, uint64_t id3)
 {
     if (fd != -1) { 
-        ioctl(fd, PERF_EVENT_IOC_DISABLE, PERF_IOC_FLAG_GROUP);
+        ioctl(fd, PERF_EVENT_IOC_DISABLE, PERF_IOC_FLAG_GROUP); //no need to stop since we are not using it
         read(fd, buf, size);
 
         uint64_t i;
@@ -85,6 +82,9 @@ void stop_read_counters(struct read_format *rf, int fd, int fd2, char *buf, size
 
             if (rf->values[i].id == id2) 
                 *val2 = rf->values[i].value;
+	     
+	    if (rf->values[i].id==id3)
+		 *val3 = rf->values[i].value;
         }
 
     }
@@ -92,9 +92,11 @@ void stop_read_counters(struct read_format *rf, int fd, int fd2, char *buf, size
     {  //set these unmonitored event counts to 0
         *val1 = 0;
         *val2 = 0;
+	*val3=  0;
     }	     
     close(fd);
     close(fd2);
+    close(fd3);
 }
 
 void count_event_perfMultiplex(pid_t tid[], int index_tid)
@@ -111,35 +113,54 @@ void count_event_perfMultiplex(pid_t tid[], int index_tid)
         // initialize read format descriptor for each thread and all events for that
         // thread
         int j;
-        for (j = 0; j < N_EVENTS / 2; j++)
+        for (j = 0; j < 2; j++)
             threads[i].rf[j] = (struct read_format *) threads[i].buf[j];
 
         // set up performance counters
-        for (j = 0; j < N_EVENTS / 2; j++) {
-            setPerfAttr(&threads[i].pea, j * 2, -1, &threads[i].fd[j * 2],
-                        &threads[i].id[j * 2], -1,
-                        tid[i]); // measure tid statistics on any cpu
-            setPerfAttr(&threads[i].pea, j * 2 + 1, threads[i].fd[j * 2],
-                        &threads[i].fd[j * 2 + 1], &threads[i].id[j * 2 + 1], -1, tid[i]);
+        for (j = 0; j < 2; j++) {
+	    if(j ==0) {
+
+		    setPerfAttr(&threads[i].pea, 0, -1, &threads[i].fd[0],&threads[i].id[0], -1, tid[i]); // measure tid statistics on any cpu
+                    setPerfAttr(&threads[i].pea, 1, threads[i].fd[0], &threads[i].fd[1], &threads[i].id[1], -1, tid[i]);
+		    setPerfAttr(&threads[i].pea, 2, threads[i].fd[0], &threads[i].fd[2], &threads[i].id[2], -1, tid[i]);
+	    }
+	    else {
+                    setPerfAttr(&threads[i].pea, 0, -1, &threads[i].fd[3],&threads[i].id[3], -1, tid[i]); // measure tid statistics on any cpu
+                    setPerfAttr(&threads[i].pea, 1, threads[i].fd[3], &threads[i].fd[4], &threads[i].id[3], -1, tid[i]);
+
+
+	    }//else close	    
         }
     }
+	//start counters
+	
 
+       // duration of count
+      //  nanosleep(&tim, NULL);
+                
+    //Read two buffers
     int j;
-    for (j = 0; j < N_EVENTS / 2; j++) {
+    for (j = 0; j < 2; j++) {
 
-        // Start counting events for event atrribute one
-        for (i = 0; i < index_tid; i++)
-            start_event(threads[i].fd[j * 2]);
+           int i; 
+	 for(i=0;i<index_tid;i++){
+          start_event(threads[i].fd[j*3]);   }
+	    
+	    // duration of count
+	  nanosleep(&tim, NULL);
+	    //
 
-        // duration of count
-        nanosleep(&tim, NULL);
-
+            
         // stop counters and read counter values
         for (i = 0; i < index_tid; i++) {
             size_t size = sizeof threads[i].buf[j];
-            stop_read_counters(threads[i].rf[j], threads[i].fd[j * 2], threads[i].fd[j*2 + 1], threads[i].buf[j], size,
-                               &threads[i].val[2 * j], &threads[i].val[2 * j + 1],
-                               threads[i].id[j * 2], threads[i].id[j * 2 + 1]);
+	    //only read no stop, stop disabled
+	    if (j==0) 
+            stop_read_counters(threads[i].rf[0], threads[i].fd[0], threads[i].fd[1], threads[i].fd[2], threads[i].buf[0], size,
+                           &threads[i].val[0], &threads[i].val[1], &threads[i].val[2], threads[i].id[0], threads[i].id[1], threads[i].id[2]);
+	    else
+	   stop_read_counters(threads[i].rf[1], threads[i].fd[3], threads[i].fd[4], threads[i].fd[5], threads[i].buf[1], size,
+		          &threads[i].val[3], &threads[i].val[4], &threads[i].val[5], threads[i].id[3], threads[i].id[4], threads[i].id[5]);		 
         }
     } // for j close
 }
@@ -155,29 +176,18 @@ void displayTIDEvents(pid_t tid[], int index_tid)
 
         int j;
         for (j = 0; j < N_EVENTS; j++)
-            THREADS.event[i][j] = (threads[i].val[j] * 4);
+            THREADS.event[i][j] = (threads[i].val[j]*2 );
 
         if (PRINT) {
-            printf("\n");
-            printf("THREAD:%d UNHALTED_CORE_CYCLE: %" PRIu64 "\n", tid[i], (threads[i].val[0]) * 4);
-            printf("THREAD: %d INSTRUCTION_RETIRED: %" PRIu64 "\n", tid[i],
-                   (threads[i].val[1]) * 4);
-            printf("\n");
-            printf("\n");
-            printf("THREAD: %d REMOTE_HITM: %" PRIu64 "\n", tid[i], (threads[i].val[2]) * 4);
-            printf("THREAD: %d REMOTE_DRAM: %" PRIu64 "\n", tid[i], (threads[i].val[3]) * 4);
-            printf("\n");
-            printf("\n");
-            printf("THREAD: %d LLC_MISSES: %" PRIu64 "\n", tid[i], (threads[i].val[4]) * 4);
-            printf("THREAD: %d L2_MISSES: %" PRIu64 "\n", tid[i], (threads[i].val[5]) * 4);
-            printf("\n");
-            printf("\n");
-            printf("THREAD: %d L3_MISSES: %" PRIu64 "\n", tid[i], (threads[i].val[6]) * 4);
-            printf("THREAD: %d L3_HITS: %" PRIu64 "\n", tid[i], (threads[i].val[7]) * 4);
-            printf("\n");
-
-            printf("-----------------------------------------------------------------"
-                   "--------\n");
+	  printf("\n");
+          printf("THREAD: %d UNHALTED_CORE_CYCLE: %"PRIu64"\n",tid[i], (threads[i].val[3])*2);
+          printf("THREAD: %d INSTRUCTION_RETIRED: %"PRIu64"\n",tid[i], (threads[i].val[1])*2);
+          printf("THREAD: %d REMOTE_HITM: %"PRIu64"\n",tid[i], (threads[i].val[2])*2);
+          printf("THREAD: %d SNP: %"PRIu64"\n",tid[i], (threads[i].val[0])*2);
+	  printf("THREAD: %d LLC MISSES: %"PRIu64"\n",tid[i], (threads[i].val[4])*2);
+	  printf("\n");
+	  printf("-------------------------------------------------------------------------\n");
+           
         }
     } // for close
 

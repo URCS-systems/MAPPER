@@ -38,20 +38,17 @@
 */
 
 enum perf_event {
-    EVENT_UNHALTED_CYCLES,
+    EVENT_SNP,	
     EVENT_INSTRUCTIONS,
     EVENT_REMOTE_HITM,
-    EVENT_REMOTE_DRAM,
+    EVENT_UNHALTED_CYCLES,
     EVENT_LLC_MISSES,
-    EVENT_L2_MISSES,
-    EVENT_L3_MISSES,
-    EVENT_L3_HIT,
     N_EVENTS,
 };
 
 #define TIME_IN_MILLI_SEC                                                                          \
-    250                // total measurement time per iteration is 4 times
-                       // TIME_IN_MILLI_SEC(example 250 millisecond *4 = 1 second)
+  500                // total measurement time per iteration is 2 times
+                       // TIME_IN_MILLI_SEC(example 500 millisecond *2 = 1 second)
 #define NUM_THREAD 5000 // Total Threads being monitored
 #define ITER 1         // Number of iterations
 
@@ -105,8 +102,8 @@ void setPerfAttr(struct perf_event_attr *pea, enum perf_event event, int group_f
 
 void start_event(int fd);
 
-void stop_read_counters(struct read_format *rf, int fd, int fd2, char *buf, size_t size, uint64_t *val1,
-                        uint64_t *val2, uint64_t id1, uint64_t id2);
+void stop_read_counters(struct read_format *rf, int fd, int fd2, int fd3, char *buf, size_t size, uint64_t *val1,
+                        uint64_t *val2, uint64_t *val3, uint64_t id1, uint64_t id2, uint64_t id3);
 
 void count_event_perfMultiplex(pid_t tid[], int index_tid);
 

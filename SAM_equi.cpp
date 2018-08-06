@@ -56,7 +56,7 @@
 #define SAM_DISTURB_PROB        0.3    /* probability of a disturbance */
 #define SAM_INITIAL_ALLOCS      4       /* number of initial allocations before exploring */
 
-#define PRINT_COUNT false 
+#define PRINT_COUNT true
 #define PRINT_BOTTLENECK false
 #define HILL_CLIMBING false
 #define HILL_SUSPEND 5 			//suspend for these many iterations when local optima found 
@@ -433,15 +433,14 @@ void PerfData::printCounters(int index)
 {
     // code added to populate PerfData per thread options->counter.delta with
     // values
-    options->counters[0].delta = THREADS.event[index][0]; // UNHALTED_CYCLES
+    options->counters[0].delta = THREADS.event[index][3]; // UNHALTED_CYCLES
     options->counters[1].delta = THREADS.event[index][1]; // INSTR ;
-    options->counters[5].delta = THREADS.event[index][6]; // L3_MISSES
-    options->counters[6].delta = THREADS.event[index][7]; // L3_HIT
-    options->counters[7].delta = THREADS.event[index][5]; // L2_MISSES
+   // options->counters[5].delta = THREADS.event[index][6]; // L3_MISSES
+   // options->counters[6].delta = THREADS.event[index][7]; // L3_HIT
+    options->counters[7].delta = THREADS.event[index][0]; // Local Snoops 
     options->counters[8].delta = THREADS.event[index][4]; // LLC_MISSES
     options->counters[9].delta = THREADS.event[index][2]; // REMOTE_HITM
-    //	                           THREADS.event[index][3]; //REMOTE DRAM
-    
+      
 
     const int map_counter_to_event[MAX_COUNTERS] = {
         [0] = EVENT_UNHALTED_CYCLES,
@@ -449,9 +448,9 @@ void PerfData::printCounters(int index)
         [2] = -1,
         [3] = -1,
         [4] = -1,
-        [5] = EVENT_L3_MISSES,
-        [6] = EVENT_L3_HIT,
-        [7] = EVENT_L2_MISSES,
+        [5] = -1,
+        [6] = -1,
+        [7] = EVENT_SNP,
         [8] = EVENT_LLC_MISSES,
         [9] = EVENT_REMOTE_HITM
     };
@@ -459,15 +458,13 @@ void PerfData::printCounters(int index)
     if (PRINT_COUNT) // set to false in Macro to disable
     {
         printf("%20s: %20d\n", "TID", THREADS.tid[index]);
-        /*
+        
         printf("UNHALTED CYCLES:%'" PRIu64 "\n", options->counters[0].delta);     // UNHALTED_CYCLES
-        printf("INSTRUCTIONS:%'20" PRIu64 "\n", options->counters[1].delta);      // INSTR ;
-        printf("L3 MISSES:%'20" PRIu64 "\n", options->counters[5].delta);         // L3_MISSES
-        printf("L3 HITS:%'20" PRIu64 "\n", options->counters[6].delta);           // L3_HIT
-        printf("L2 MISSES:%'20" PRIu64 "\n", options->counters[7].delta);         // L2_MISSES
+        printf("INSTRUCTIONS:%'20" PRIu64 "\n", options->counters[1].delta);      // INSTR 
+        printf("Local Snoop:%'20" PRIu64 "\n", options->counters[7].delta);         // Local snoop
         printf("LLC MISSES:%'20" PRIu64 "\n", options->counters[8].delta);        // LLC_MISSES
         printf("REMOTE_HITM:%'20" PRIu64 "\n", options->counters[9].delta);       // REMOTE_HITM
-        printf("REMOTE DRAM:%'20" PRIu64 "\n", options->counters[2].delta);*/      // REMOTE_DRAM
+        
     }
 
     int i;
@@ -516,8 +513,7 @@ void PerfData::printCounters(int index)
     }
 
     i = 3; // snp
-    tempvar = (((double) cpuinfo->clock_rate * (options->counters[7].delta -
-                               (options->counters[6].delta + options->counters[5].delta))) /
+    tempvar = (((double) cpuinfo->clock_rate * (options->counters[7].delta )) /
                (options->counters[0].delta + 1));
     if (tempvar > thresh_pt[i]) {
         val[i] = tempvar;
