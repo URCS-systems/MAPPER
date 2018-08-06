@@ -125,8 +125,8 @@ void count_event_perfMultiplex(pid_t tid[], int index_tid)
 		    setPerfAttr(&threads[i].pea, 2, threads[i].fd[0], &threads[i].fd[2], &threads[i].id[2], -1, tid[i]);
 	    }
 	    else {
-                    setPerfAttr(&threads[i].pea, 0, -1, &threads[i].fd[3],&threads[i].id[3], -1, tid[i]); // measure tid statistics on any cpu
-                    setPerfAttr(&threads[i].pea, 1, threads[i].fd[3], &threads[i].fd[4], &threads[i].id[3], -1, tid[i]);
+                    setPerfAttr(&threads[i].pea, 3, -1, &threads[i].fd[3],&threads[i].id[3], -1, tid[i]); // measure tid statistics on any cpu
+                    setPerfAttr(&threads[i].pea, 4, threads[i].fd[3], &threads[i].fd[4], &threads[i].id[4], -1, tid[i]);
 
 
 	    }//else close	    
