@@ -249,7 +249,7 @@ static int compare_apps_by_extra_metric_desc(const void *a_ptr, const void *b_pt
 static int compare_ints_mapped(const void *arg1, const void *arg2, void *ptr)
 {
     const int *map = (const int *) ptr;
-    return map[*(const int *) arg1] < map[*(const int *) arg2];
+    return map[*(const int *) arg1] > map[*(const int *) arg2];
 }
 
 
@@ -1325,14 +1325,14 @@ int main(int argc, char *argv[])
                      * If an application is already in this socket, the precedence is increased.
                      * If another application is in this socket, the precedence is reduced.
                      */
-                    for (int k = j + 1; k < num_apps; ++k) {
-                        for (int s = 0; s < cpuinfo->num_sockets; ++s) {
+                    // for (int k = j + 1; k < num_apps; ++k) {
+                    for (int k = range_ends[i]; k < range_ends[i + 1]; ++k) {
+                        for (int s = 0; s < cpuinfo->num_sockets && j != k; ++s) {
                             for (int c = 0; c < cpuinfo->sockets[s].num_cpus; ++c) {
                                 struct cpu hw = cpuinfo->sockets[s].cpus[c];
 
                                 if (CPU_ISSET_S(hw.tnumber, rem_cpus_sz, apps_sorted[k]->cpuset[0])) {
-                                    per_app_socket_orders[j][s]++;
-                                    break;
+                                    per_app_socket_orders[j][s]++;                             
                                 }
                             }
                         }
@@ -1352,17 +1352,25 @@ int main(int argc, char *argv[])
                             }
                         }
 
-                    if (socket != -1)
-                        per_app_socket_orders[j][socket] = INT_MIN;
+                    //if (socket != -1)
+                    //    per_app_socket_orders[j][socket] = 0;
 
-                    for (int s = 0; s < cpuinfo->num_sockets; ++s)
+                    for (int s = 0; s < cpuinfo->num_sockets; ++s) {
                         temp[s] = s;
+					}
 
                     qsort_r(temp, cpuinfo->num_sockets, sizeof temp[0],
                             &compare_ints_mapped, per_app_socket_orders[j]);
 
                     memcpy(per_app_socket_orders[j], temp, 
                             cpuinfo->num_sockets * sizeof *per_app_socket_orders[j]);
+
+					printf("App score: %d:  ", apps_sorted[j]->pid);									
+					for (int s = 0; s < cpuinfo->num_sockets; ++s) {
+						printf(" %d ", per_app_socket_orders[j][s]);
+					}
+					printf ("\n");
+
                 }
             }
 
