@@ -1,4 +1,4 @@
-CFLAGS=-std=gnu11
+CFLAGS=-std=gnu11 -g3 -ggdb -Wall -Wextra -Werror
 
 jobtest: jobtest.c
 

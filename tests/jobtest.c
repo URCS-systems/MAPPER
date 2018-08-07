@@ -7,8 +7,8 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <signal.h>
+#include <stdbool.h>
 
-#define MAX_JOBS    10
 #define ARG_MAX     20
 
 struct job {
@@ -17,28 +17,40 @@ struct job {
     int argc;
     char *argv[ARG_MAX];
     pid_t pid;
-    int status;
+    double avg_time;
+    int successful_runs;
+    struct job *prev, *next;
 };
 
 int num_jobs;
-struct job jobs[MAX_JOBS];
+struct job *job_list;
+
+unsigned test_length = 60 * 4;   /* in seconds */
+time_t start;
+
+bool wants_to_quit;
 
 void handle_quit(int sig) {
-    printf("Received signal: %s\n", strsignal(sig));
-    for (int i = 0; i < num_jobs; ++i)
-        if (jobs[i].pid > 0)
-            kill(jobs[i].pid, SIGTERM);
-    sleep(2);
-    for (int i = 0; i < num_jobs; ++i)
-        if (jobs[i].pid > 0)
-            kill(jobs[i].pid, SIGKILL);
+    if (!wants_to_quit) {
+        wants_to_quit = true;
+        printf("Received signal: %s\n", strsignal(sig));
+        for (struct job *jb = job_list; jb; jb = jb->next) {
+            if (jb->pid > 0)
+                kill(-jb->pid, SIGTERM);
+        }
+        sleep(2);
+        for (struct job *jb = job_list; jb; jb = jb->next) {
+            if (jb->pid > 0)
+                kill(-jb->pid, SIGKILL);
+        }
+    }
 }
 
-static int find_job_id_by_pid(pid_t pid) {
-    for (int i = 0; i < num_jobs; ++i)
-        if (jobs[i].pid == pid)
-            return i;
-    return -1;
+static struct job *find_job_id_by_pid(pid_t pid) {
+    for (struct job *jb = job_list; jb; jb = jb->next)
+        if (jb->pid == pid)
+            return jb;
+    return NULL;
 }
 
 static pid_t run_job(struct job *jb) {
@@ -47,6 +59,7 @@ static pid_t run_job(struct job *jb) {
     old = signal(SIGTERM, SIG_DFL);
     signal(SIGQUIT, SIG_DFL);
     signal(SIGINT, SIG_DFL);
+    signal(SIGALRM, SIG_DFL);
 
     jb->pid = fork();
 
@@ -57,11 +70,17 @@ static pid_t run_job(struct job *jb) {
 
     if (jb->pid == 0) {
         /* child */
-        pid_t mypid = getpid();
+        pid_t mypid;
+        
+        /* set this process as the session leader,
+         * which creates a new process group that
+         * we can send signals to */
+        if ((mypid = setsid()) == (pid_t) -1)
+            mypid = getpid();
 
         printf("[PID %6d] running %s ...\n", mypid, jb->argbuf);
         if (execvp(jb->argv[0], jb->argv) < 0) {
-            fprintf(stderr, "failed to run %s: %s\n", jb->argbuf, strerror(errno));
+            fprintf(stderr, "failed to run %s: %m\n", jb->argbuf);
             exit(EXIT_FAILURE);
         }
     }
@@ -69,6 +88,7 @@ static pid_t run_job(struct job *jb) {
     signal(SIGTERM, old);
     signal(SIGQUIT, old);
     signal(SIGINT, old);
+    signal(SIGALRM, old);
 
     return jb->pid;
 }
@@ -85,7 +105,7 @@ int main(int argc, char *argv[]) {
         input = stdin;
     else {
         if (!(input = fopen(argv[1], "r"))) {
-            perror("Could not open job list");
+            fprintf(stderr, "Could not open %s: %m\n", argv[1]);
             return 1;
         }
     }
@@ -95,30 +115,45 @@ int main(int argc, char *argv[]) {
     size_t sz = 0;
 
     for (num_jobs = 0; getline(&line, &sz, input) >= 0; ) {
-        if (num_jobs >= MAX_JOBS) {
-            printf("Too many jobs (%d).\n", num_jobs);
-            break;
-        }
-
         char *nlptr = strchr(line, '\n');
+        struct job *jb = NULL;
+        char *token = NULL;
+        char *save = NULL;
+        unsigned seconds = 0;
+
         if (nlptr) *nlptr = '\0';
 
         /* skip empty lines or comments */
         if (*line == '\0' || *line == '\n' || *line == '#')
             continue;
 
-        jobs[num_jobs].argbuf = strdup(line);
-        char *token = line;
-        char *save = NULL;
+        /* get test length */
+        if (sscanf(line, "time: %u s", &seconds) == 1) {
+            test_length = seconds;
+            continue;
+        }
+
+        if (!(jb = calloc(1, sizeof *jb))) {
+            perror("calloc");
+            return 1;
+        }
+
+        jb->argbuf = strdup(line);
+        token = line;
 
         for ( ; (token = strtok_r(token, " ", &save)) != NULL; token = NULL) {
-            if (jobs[num_jobs].argc >= ARG_MAX - 1) {
-                printf("Too many args (%d).\n", jobs[num_jobs].argc);
+            if (jb->argc >= ARG_MAX - 1) {
+                printf("Too many args (%d).\n", jb->argc);
                 break;
             }
-            jobs[num_jobs].argv[jobs[num_jobs].argc++] = strdup(token);
+            jb->argv[jb->argc++] = strdup(token);
         }
-        jobs[num_jobs].argv[jobs[num_jobs].argc++] = NULL;
+        jb->argv[jb->argc++] = NULL;
+
+        jb->next = job_list;
+        if (job_list)
+            job_list->prev = jb;
+        job_list = jb;
         num_jobs++;
     }
 
@@ -129,45 +164,56 @@ int main(int argc, char *argv[]) {
     signal(SIGTERM, &handle_quit);
     signal(SIGQUIT, &handle_quit);
     signal(SIGINT, &handle_quit);
+    signal(SIGALRM, &handle_quit);
 
     /* run all jobs */
-    printf("Running %d jobs...\n", num_jobs);
-    for (int i = 0; i < num_jobs; ++i) {
-        if (run_job(&jobs[i]) != (pid_t) -1)
-            clock_gettime(CLOCK_MONOTONIC_RAW, &jobs[i].start);
+    printf("Running %d jobs for %u seconds...\n", num_jobs, test_length);
+    time(&start);
+    alarm(test_length);
+    for (struct job *jb = job_list; jb; jb = jb->next) {
+        if (run_job(jb) != (pid_t) -1)
+            clock_gettime(CLOCK_MONOTONIC_RAW, &jb->start);
     }
 
     pid_t pid;
     int wstatus;
     while (!((pid = waitpid(-1, &wstatus, 0)) == -1 && errno == ECHILD)) {
-        int i = find_job_id_by_pid(pid);
-        if (i == -1)
+        struct job *jb = find_job_id_by_pid(pid);
+        double elapsed = difftime(time(NULL), start);
+
+        clock_gettime(CLOCK_MONOTONIC_RAW, &jb->end);
+
+        if (elapsed > test_length || wants_to_quit)
+            /* don't count this test result */
             continue;
-        clock_gettime(CLOCK_MONOTONIC_RAW, &jobs[i].end);
-        jobs[i].status = wstatus;
+
+        if (WIFEXITED(wstatus) && WEXITSTATUS(wstatus) == 0) {
+            struct timespec diff_ts = jb->end;
+            if (diff_ts.tv_nsec < jb->start.tv_nsec) {
+                diff_ts.tv_sec = diff_ts.tv_sec - jb->start.tv_sec - 1;
+                diff_ts.tv_nsec = 1000000000 - (jb->start.tv_nsec - diff_ts.tv_nsec);
+            } else {
+                diff_ts.tv_sec -= jb->start.tv_sec;
+                diff_ts.tv_nsec -= jb->start.tv_nsec;
+            }
+
+            jb->avg_time = (jb->avg_time * jb->successful_runs + (diff_ts.tv_sec + (double) diff_ts.tv_nsec / 1e+9))
+                / (jb->successful_runs + 1);
+            jb->successful_runs++;
+        } else {
+            fprintf(stderr, "WARNING: Ignoring result for %s since it failed\n", jb->argv[0]);
+        }
+
+        /* run the job again */
+        if (run_job(jb) != (pid_t) -1)
+            clock_gettime(CLOCK_MONOTONIC_RAW, &jb->start);
     }
 
     printf("Summary:\n");
-    for (int i = 0; i < num_jobs; ++i) {
-        struct timespec diff_ts = jobs[i].end;
-        if (diff_ts.tv_nsec < jobs[i].start.tv_nsec) {
-            diff_ts.tv_sec = diff_ts.tv_sec - jobs[i].start.tv_sec - 1;
-            diff_ts.tv_nsec = 1000000000 - (jobs[i].start.tv_nsec - diff_ts.tv_nsec);
-        } else {
-            diff_ts.tv_sec -= jobs[i].start.tv_sec;
-            diff_ts.tv_nsec -= jobs[i].start.tv_nsec;
-        }
-
+    for (struct job *jb = job_list; jb; jb = jb->next) {
         int n = 0;
-        printf(" %.55s: %n", jobs[i].argbuf, &n);
-        printf("%*lf s", 69 - n - 2,
-                diff_ts.tv_sec + (double) diff_ts.tv_nsec / 1e+9);
-        if (WIFEXITED(jobs[i].status) && WEXITSTATUS(jobs[i].status) != 0) {
-            printf(" (ret %3d)\n", WEXITSTATUS(jobs[i].status));
-        } else if (WIFSIGNALED(jobs[i].status)) {
-            printf(" (%7s)\n", strsignal(WTERMSIG(jobs[i].status)));
-        } else
-            printf("\n");
+        printf(" %.65s: %n", jb->argbuf, &n);
+        printf("%*lf s (%2d)\n", 75 - n - 2, jb->avg_time, jb->successful_runs);
     }
 
     return 0;
