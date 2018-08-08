@@ -11,10 +11,12 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 
-
+#define MIN(a,b)    ((a) < (b) ? (a) : (b))
 #define ARG_MAX     20
+#define MAX_FAILED  20
 
 struct job {
+    char name[40];
     struct timespec start, end;
     char *argbuf;
     int argc;
@@ -22,6 +24,7 @@ struct job {
     pid_t pid;
     double avg_time;
     int successful_runs;
+    int failed_runs;
     struct job *prev, *next;
 };
 
@@ -130,13 +133,15 @@ int main(int argc, char *argv[]) {
     /* read jobs */
     char *line = NULL;
     size_t sz = 0;
+    int lineno = 1;
 
-    for (num_jobs = 0; getline(&line, &sz, input) >= 0; ) {
+    for (num_jobs = 0; getline(&line, &sz, input) >= 0; ++lineno) {
         char *nlptr = strchr(line, '\n');
         struct job *jb = NULL;
         char *token = NULL;
         char *save = NULL;
         unsigned seconds = 0;
+        char *sp_ptr = NULL;
 
         if (nlptr) *nlptr = '\0';
 
@@ -150,13 +155,20 @@ int main(int argc, char *argv[]) {
             continue;
         }
 
+        if (!(sp_ptr = strchr(line, ' '))) {
+            fprintf(stderr, "%s:%d: expected \"<jobname> <args>\"\n",
+                    argv[1], lineno);
+            continue;
+        }
+
         if (!(jb = calloc(1, sizeof *jb))) {
             perror("calloc");
             return 1;
         }
 
-        jb->argbuf = strdup(line);
-        token = line;
+        jb->argbuf = strdup(sp_ptr + 1);
+        strncpy(jb->name, line, MIN((long)(sizeof jb->name - 1), sp_ptr - line));
+        token = sp_ptr + 1;
 
         for ( ; (token = strtok_r(token, " ", &save)) != NULL; token = NULL) {
             if (jb->argc >= ARG_MAX - 1) {
@@ -218,18 +230,22 @@ int main(int argc, char *argv[]) {
                 / (jb->successful_runs + 1);
             jb->successful_runs++;
         } else {
-            fprintf(stderr, "WARNING: Ignoring result for %s since it failed\n", jb->argv[0]);
+            fprintf(stderr, "WARNING: Ignoring result for %s since it failed\n", jb->name);
+            jb->failed_runs++;
         }
 
         /* run the job again */
-        if (run_job(jb) != (pid_t) -1)
+        if (jb->failed_runs >= MAX_FAILED)
+            fprintf(stderr, "WARNING: %s has failed too many times (%d).\n", jb->name,
+                    jb->failed_runs);
+        else if (run_job(jb) != (pid_t) -1)
             clock_gettime(CLOCK_MONOTONIC_RAW, &jb->start);
     }
 
     printf("Summary:\n");
     for (struct job *jb = job_list; jb; jb = jb->next) {
         int n = 0;
-        printf(" %.65s: %n", jb->argbuf, &n);
+        printf(" %.40s: %n", jb->name, &n);
         printf("%*lf s (%2d)\n", 75 - n - 2, jb->avg_time, jb->successful_runs);
     }
 
