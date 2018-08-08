@@ -25,6 +25,7 @@ struct job {
     double avg_time;
     int successful_runs;
     int failed_runs;
+    int total_runs;
     struct job *prev, *next;
 };
 
@@ -86,7 +87,7 @@ static pid_t run_job(struct job *jb) {
         if ((mypid = setsid()) == (pid_t) -1)
             mypid = getpid();
 
-        snprintf(fname, sizeof fname, "%d.out", mypid);
+        snprintf(fname, sizeof fname, "%s-v%d.%d.out", jb->name, jb->total_runs + 1, mypid);
         printf("[PID %6d] running %s ...\n", mypid, jb->argbuf);
 
         if ((log_fd = open(fname, O_CREAT | O_RDWR, 0644)) != -1) {
@@ -233,6 +234,7 @@ int main(int argc, char *argv[]) {
             fprintf(stderr, "WARNING: Ignoring result for %s since it failed\n", jb->name);
             jb->failed_runs++;
         }
+        jb->total_runs++;
 
         /* run the job again */
         if (jb->failed_runs >= MAX_FAILED)
