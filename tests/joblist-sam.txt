@@ -1,6 +1,6 @@
 time: 600 s
-../sam-launch ./run-graphchi.sh toolkits/collaborative_filtering/svdpp --training=/u/pferro/Downloads/netflix/netflix_train.txt --validation=/u/pferro/Downloads/netflix/netflix_test.txt --biassgd_lambda=1e-4 --biassgd_gamma=1e-4 --minval=1 --maxval=5 --max_iter=6 --execthreads=22
-../sam-launch ./run-graphchi.sh toolkits/collaborative_filtering/als --training=/u/pferro/Downloads/netflix2/netflix_train.txt --validation=/u/pferro/Downloads/netflix2/netflix_test.txt --lambda=1e-4 --minval=1 --maxval=5 --max_iter=6 --execthreads=22
-../sam-launch ./run-parsec.sh parsecmgmt -a run -p ferret -n 24 -i native
-../sam-launch ./run-parsec.sh parsecmgmt -a run -p x264 -n 24 -i native
+svdpp ../sam-launch ./run-graphchi.sh toolkits/collaborative_filtering/svdpp --training=/u/pferro/Downloads/netflix/netflix_train.txt --validation=/u/pferro/Downloads/netflix/netflix_test.txt --biassgd_lambda=1e-4 --biassgd_gamma=1e-4 --minval=1 --maxval=5 --max_iter=6 --execthreads=22
+als ../sam-launch ./run-graphchi.sh toolkits/collaborative_filtering/als --training=/u/pferro/Downloads/netflix2/netflix_train.txt --validation=/u/pferro/Downloads/netflix2/netflix_test.txt --lambda=1e-4 --minval=1 --maxval=5 --max_iter=6 --execthreads=22
+ferret ../sam-launch ./run-parsec.sh parsecmgmt -a run -p ferret -n 24 -i native
+x264 ../sam-launch ./run-parsec.sh parsecmgmt -a run -p x264 -n 24 -i native
 
