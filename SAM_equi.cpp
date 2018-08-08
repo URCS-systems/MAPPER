@@ -1243,22 +1243,25 @@ int main(int argc, char *argv[])
               }
 
               /* 
-               * If there were no candidates with spares, take from other applications.
+               * If there were no candidates with spares, take from other applications,
+               * but only if we really need to.
                */
-              int old_cpu_budget_j;
-              do {
-                old_cpu_budget_j = per_app_cpu_budget[j];
-                for (int l = num_candidates - 1; l >= 0 && needs_more[j] > 0; --l) {
-                  int m = candidates_map[candidates[l]->appno];
+              if (per_app_cpu_budget[j] < SAM_MIN_CONTEXTS || apps_sorted[j]->times_allocated < 1) {
+                  int old_cpu_budget_j;
+                  do {
+                    old_cpu_budget_j = per_app_cpu_budget[j];
+                    for (int l = num_candidates - 1; l >= 0 && needs_more[j] > 0; --l) {
+                      int m = candidates_map[candidates[l]->appno];
 
-                  if (per_app_cpu_budget[m] > SAM_MIN_CONTEXTS) {
-                    per_app_cpu_budget[m]--;
-                    per_app_cpu_budget[j]++;
-                    needs_more[j]--;
-                    amt_taken[m]++;
-                  }
-                }
-              } while (old_cpu_budget_j < per_app_cpu_budget[j]);
+                      if (per_app_cpu_budget[m] > SAM_MIN_CONTEXTS) {
+                        per_app_cpu_budget[m]--;
+                        per_app_cpu_budget[j]++;
+                        needs_more[j]--;
+                        amt_taken[m]++;
+                      }
+                    }
+                  } while (old_cpu_budget_j < per_app_cpu_budget[j]);
+              }
 
               for (int l = 0; l < num_apps; ++l) {
                 if (amt_taken[l] > 0)
