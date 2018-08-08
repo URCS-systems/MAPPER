@@ -180,11 +180,11 @@ void displayTIDEvents(pid_t tid[], int index_tid)
 
         if (PRINT) {
 	  printf("\n");
-          printf("THREAD: %d UNHALTED_CORE_CYCLE: %"PRIu64"\n",tid[i], (threads[i].val[3])*2);
-          printf("THREAD: %d INSTRUCTION_RETIRED: %"PRIu64"\n",tid[i], (threads[i].val[1])*2);
-          printf("THREAD: %d REMOTE_HITM: %"PRIu64"\n",tid[i], (threads[i].val[2])*2);
-          printf("THREAD: %d SNP: %"PRIu64"\n",tid[i], (threads[i].val[0])*2);
-	  printf("THREAD: %d LLC MISSES: %"PRIu64"\n",tid[i], (threads[i].val[4])*2);
+          printf("THREAD: %d UNHALTED_CORE_CYCLE: %"PRIu64"\n",tid[i], (threads[i].val[EVENT_UNHALTED_CYCLES])*2);
+          printf("THREAD: %d INSTRUCTION_RETIRED: %"PRIu64"\n",tid[i], (threads[i].val[EVENT_INSTRUCTIONS])*2);
+          printf("THREAD: %d REMOTE_HITM: %"PRIu64"\n",tid[i], (threads[i].val[EVENT_REMOTE_HITM])*2);
+          printf("THREAD: %d SNP: %"PRIu64"\n",tid[i], (threads[i].val[EVENT_SNP])*2);
+	  printf("THREAD: %d LLC MISSES: %"PRIu64"\n",tid[i], (threads[i].val[EVENT_LLC_MISSES])*2);
 	  printf("\n");
 	  printf("-------------------------------------------------------------------------\n");
            
