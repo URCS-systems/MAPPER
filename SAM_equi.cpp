@@ -1092,8 +1092,8 @@ int main(int argc, char *argv[])
                 if (curr_perf < prev_perf && (prev_perf - curr_perf) / (double)prev_perf >= SAM_PERF_THRESH) {
                   if (apps_sorted[j]->exploring) {
                     /*
-                                         * Revert to previous count if performance reduction was great enough.
-                                         */
+                     * Revert to previous count if performance reduction was great enough.
+                     */
                     per_app_cpu_budget[j] = prev_alloc_len;
                   } else {
                     int guess = per_app_cpu_budget[j] + guess_optimization(per_app_cpu_budget[j], counter_order[i]);
@@ -1150,13 +1150,13 @@ int main(int argc, char *argv[])
       }
 
       /*
-             * Now we adjust the budgets to fit the resources.
-             */
+       * Now we adjust the budgets to fit the resources.
+       */
       for (int i = 0; i < N_METRICS; ++i) {
         for (int j = range_ends[i]; j < range_ends[i + 1]; ++j) {
           /*
-                     * Make sure we have enough CPUs to give the budget.
-                     */
+           * Make sure we have enough CPUs to give the budget.
+           */
           if (initial_remaining_cpus > 0 && needs_more[j] > 0) {
             int added = MIN(needs_more[j], initial_remaining_cpus);
             initial_remaining_cpus -= added;
@@ -1176,8 +1176,8 @@ int main(int argc, char *argv[])
             printf("[APP %6d] requests %d more hardware contexts\n", apps_sorted[j]->pid, needs_more[j]);
 
             /*
-                         * Find the least efficient application to steal CPUs from.
-                         */
+             * Find the least efficient application to steal CPUs from.
+             */
             for (int l = 0; l < num_apps; ++l) {
               if (l == j)
                 continue;
@@ -1204,24 +1204,24 @@ int main(int argc, char *argv[])
             }
 
             /*
-                         * It's unlikely for us to have less than the fair share available
-                         * without there being at least one other application.
-                         * The one case is when the other applications are new.
-                         */
+             * It's unlikely for us to have less than the fair share available
+             * without there being at least one other application.
+             * The one case is when the other applications are new.
+             */
             if (num_candidates + num_spare_candidates > 0) {
               int *amt_taken = new int[num_apps]();
 
               /*
-                             * Sort by efficiency.
-                             */
+               * Sort by efficiency.
+               */
               int met = EXTRA_METRIC_IpCOREpS;
               qsort_r(candidates, num_candidates, sizeof *candidates, &compare_apps_by_extra_metric_desc, (void *)&met);
               qsort_r(spare_candidates, num_spare_candidates, sizeof *spare_candidates,
                       &compare_apps_by_extra_metric_desc, (void *)&met);
 
               /*
-                             * Start by taking away contexts from the least efficient applications.
-                             */
+               * Start by taking away contexts from the least efficient applications.
+               */
               for (int l = num_spare_candidates - 1; l >= 0 && needs_more[j] > 0; --l) {
                 int m = spare_candidates_map[spare_candidates[l]->appno];
 
@@ -1235,8 +1235,8 @@ int main(int argc, char *argv[])
               }
 
               /* 
-                             * If there were no candidates with spares, take from other applications.
-                             */
+               * If there were no candidates with spares, take from other applications.
+               */
               int old_cpu_budget_j;
               do {
                 old_cpu_budget_j = per_app_cpu_budget[j];
@@ -1272,10 +1272,10 @@ int main(int argc, char *argv[])
           }
 
           /*
-                     * Here we compute the precedence for locating threads in a socket.
-                     * If an application is already in this socket, the precedence is increased.
-                     * If another application is in this socket, the precedence is reduced.
-                     */
+           * Here we compute the precedence for locating threads in a socket.
+           * If an application is already in this socket, the precedence is increased.
+           * If another application is in this socket, the precedence is reduced.
+           */
           // for (int k = j + 1; k < num_apps; ++k) {
           for (int k = range_ends[i]; k < range_ends[i + 1]; ++k) {
             for (int s = 0; s < cpuinfo->num_sockets && j != k; ++s) {
@@ -1314,7 +1314,7 @@ int main(int argc, char *argv[])
 
           memcpy(per_app_socket_orders[j], temp, cpuinfo->num_sockets * sizeof *per_app_socket_orders[j]);
 
-          printf("App score: %d:  ", apps_sorted[j]->pid);
+          printf("[APP %6d] score:  ", apps_sorted[j]->pid);
           for (int s = 0; s < cpuinfo->num_sockets; ++s) {
             printf(" %d ", per_app_socket_orders[j][s]);
           }
@@ -1323,8 +1323,8 @@ int main(int argc, char *argv[])
       }
 
       /*
-             * Compute the budgets.
-             */
+       * Compute the budgets.
+       */
       for (int i = 0; i < N_METRICS; ++i) {
         for (int j = range_ends[i]; j < range_ends[i + 1]; ++j) {
           cpu_set_t *new_cpuset;
@@ -1338,9 +1338,9 @@ int main(int argc, char *argv[])
             int met = counter_order[i];
 
             /*
-                         * compute the CPU budget for this application, given its bottleneck
-                         * [met]
-                         */
+             * compute the CPU budget for this application, given its bottleneck
+             * [met]
+             */
             (*budgeter_functions[met])(apps_sorted[j]->cpuset[0], new_cpuset, apps_sorted[j]->curr_bottleneck,
                                        apps_sorted[j]->prev_bottleneck, remaining_cpus, rem_cpus_sz,
                                        per_app_cpu_budget[j], per_app_socket_orders[j]);
@@ -1351,7 +1351,7 @@ int main(int argc, char *argv[])
           }
 
           /* subtract allocated cpus from remaining cpus,
-                     * [new_cpuset] is already a subset of [remaining_cpus] */
+           * [new_cpuset] is already a subset of [remaining_cpus] */
           CPU_XOR_S(rem_cpus_sz, remaining_cpus, remaining_cpus, new_cpuset);
           per_app_cpu_budget[j] = CPU_COUNT_S(rem_cpus_sz, new_cpuset);
           new_cpusets[j] = new_cpuset;
@@ -1359,8 +1359,8 @@ int main(int argc, char *argv[])
       }
 
       /*
-             * Iterate again. This time, apply the budgets.
-             */
+       * Iterate again. This time, apply the budgets.
+       */
       for (int i = 0; i < N_METRICS; ++i) {
         if (i < num_counter_orders) {
           int met = counter_order[i];
@@ -1437,7 +1437,6 @@ int main(int argc, char *argv[])
       memset(an->bottleneck, 0, sizeof an->bottleneck);
       memset(an->value, 0, sizeof an->value);
     }
-    // sleep(1);
   }
 
   printf("Stopping...\n");
