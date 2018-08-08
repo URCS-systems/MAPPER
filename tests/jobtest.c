@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <unistd.h>
 #include <string.h>
 #include <time.h>
@@ -7,7 +8,9 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <signal.h>
-#include <stdbool.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+
 
 #define ARG_MAX     20
 
@@ -71,6 +74,8 @@ static pid_t run_job(struct job *jb) {
     if (jb->pid == 0) {
         /* child */
         pid_t mypid;
+        char fname[512];
+        int log_fd;
         
         /* set this process as the session leader,
          * which creates a new process group that
@@ -78,7 +83,19 @@ static pid_t run_job(struct job *jb) {
         if ((mypid = setsid()) == (pid_t) -1)
             mypid = getpid();
 
+        snprintf(fname, sizeof fname, "%d.out", mypid);
         printf("[PID %6d] running %s ...\n", mypid, jb->argbuf);
+
+        if ((log_fd = open(fname, O_CREAT | O_RDWR, 0644)) != -1) {
+            if (dup2(log_fd, STDOUT_FILENO) == -1)
+                fprintf(stderr, "[PID %6d] failed to associate stdout with %s: %m\n", 
+                        mypid, fname);
+            if (dup2(log_fd, STDERR_FILENO) == -1)
+                fprintf(stderr, "[PID %6d] failed to associate stderr with %s: %m\n",
+                        mypid, fname);
+        } else
+            fprintf(stderr, "[PID %6d] failed to open log file %s: %m\n", mypid, fname);
+
         if (execvp(jb->argv[0], jb->argv) < 0) {
             fprintf(stderr, "failed to run %s: %m\n", jb->argbuf);
             exit(EXIT_FAILURE);
