@@ -50,7 +50,6 @@
 #define SAM_DISTURB_PROB 0.3 /* probability of a disturbance */
 #define SAM_INITIAL_ALLOCS 4 /* number of initial allocations before exploring */
 
-#define PRINT_COUNT true
 #define PRINT_BOTTLENECK false
 #define HILL_CLIMBING false
 #define HILL_SUSPEND 5 //suspend for these many iterations when local optima found
@@ -199,7 +198,7 @@ struct appinfo {
 };
 
 bool stoprun = false;
-bool print_counters = false;
+bool print_counters = true;
 bool print_proc_creation = false;
 struct cpuinfo *cpuinfo;
 
@@ -267,7 +266,11 @@ void sigterm_handler(int sig)
 }
 void siginfo_handler(int sig)
 {
-  print_counters = !print_counters;
+  printf("[DEBUG] Received %s.", strsignal(sig));
+  if ((print_counters = !print_counters))
+    printf(" Enabled printing counters.\n");
+  else
+    printf(" Disabled printing counters.\n");
 }
 
 static void manage(pid_t pid, pid_t app_pid)
@@ -446,51 +449,45 @@ void PerfData::initialize(pid_t tid, pid_t app_tid)
 }
 void PerfData::printCounters(int index)
 {
-  // code added to populate PerfData per thread options->counter.delta with
-  // values
-  options->counters[0].delta = THREADS.event[index][3]; // UNHALTED_CYCLES
-  options->counters[1].delta = THREADS.event[index][1]; // INSTR ;
-  // options->counters[5].delta = THREADS.event[index][6]; // L3_MISSES
-  // options->counters[6].delta = THREADS.event[index][7]; // L3_HIT
-  options->counters[7].delta = THREADS.event[index][0]; // Local Snoops
-  options->counters[8].delta = THREADS.event[index][4]; // LLC_MISSES
-  options->counters[9].delta = THREADS.event[index][2]; // REMOTE_HITM
+  const int counter_event_pairs[][2] = {
+      { 0, EVENT_UNHALTED_CYCLES },
+      { 1, EVENT_INSTRUCTIONS },
+      { 7, EVENT_SNP },
+      { 8, EVENT_LLC_MISSES },
+      { 9, EVENT_REMOTE_HITM }
+  };
+  const int num_pairs = sizeof(counter_event_pairs) / sizeof(counter_event_pairs[0]);
 
-  const int map_counter_to_event[MAX_COUNTERS] = {[0] = EVENT_UNHALTED_CYCLES,
-                                                  [1] = EVENT_INSTRUCTIONS,
-                                                  [2] = -1,
-                                                  [3] = -1,
-                                                  [4] = -1,
-                                                  [5] = -1,
-                                                  [6] = -1,
-                                                  [7] = EVENT_SNP,
-                                                  [8] = EVENT_LLC_MISSES,
-                                                  [9] = EVENT_REMOTE_HITM };
+  for (int i = 0; i < num_pairs; ++i) {
+      int ctr = counter_event_pairs[i][0];
+      int evt = counter_event_pairs[i][1];
 
-  if (PRINT_COUNT) // set to false in Macro to disable
-  {
-    printf("%20s: %20d\n", "TID", THREADS.tid[index]);
-
-    printf("UNHALTED CYCLES:%'" PRIu64 "\n", options->counters[0].delta); // UNHALTED_CYCLES
-    printf("INSTRUCTIONS:%'20" PRIu64 "\n", options->counters[1].delta); // INSTR
-    printf("Local Snoop:%'20" PRIu64 "\n", options->counters[7].delta); // Local snoop
-    printf("LLC MISSES:%'20" PRIu64 "\n", options->counters[8].delta); // LLC_MISSES
-    printf("REMOTE_HITM:%'20" PRIu64 "\n", options->counters[9].delta); // REMOTE_HITM
+      options->counters[ctr].delta = THREADS.event[index][evt];
   }
 
   int i;
   int num = options->countercount;
   active = 0;
 
+  if (print_counters)
+    printf("%20s: %20d\n", "TID", THREADS.tid[index]);
+
   for (i = 0; i < num; i++) {
     options->counters[i].val += options->counters[i].delta;
-    if (PRINT_COUNT && map_counter_to_event[i] != -1)
-      printf("%20s: %'20" PRIu64 " %'20" PRIu64 " (%.2f%% scaling, ena=%'" PRIu64 ", run=%'" PRIu64 ")\n",
-             event_names[map_counter_to_event[i]], options->counters[i].val, options->counters[i].delta,
-             (1.0 - options->counters[i].ratio) * 100.0, options->counters[i].auxval1, options->counters[i].auxval2);
     bottleneck[i] = 0;
     if (apps_array[app_pid])
       apps_array[app_pid]->value[i] += options->counters[i].delta;
+  }
+
+  for (int k = 0; k < num_pairs; ++k) {
+      int ctr = counter_event_pairs[k][0];
+      int evt = counter_event_pairs[k][1];
+
+      if (print_counters)
+        printf("%20s: %'20" PRIu64 " %'20" PRIu64 " (%.2f%% scaling, ena=%'" PRIu64 ", run=%'" PRIu64 ")\n",
+                event_names[evt], options->counters[ctr].val, options->counters[ctr].delta,
+                (1.0 - options->counters[ctr].ratio) * 100.0, options->counters[ctr].auxval1, 
+                options->counters[ctr].auxval2);
   }
 
   i = 0;
