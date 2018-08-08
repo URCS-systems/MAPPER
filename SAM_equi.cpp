@@ -275,12 +275,15 @@ static void manage(pid_t pid, pid_t app_pid)
 
     if (!apps_array[app_pid]) {
         struct appinfo *anode = (struct appinfo *)calloc(1, sizeof *anode);
+        size_t sz = CPU_ALLOC_SIZE(cpuinfo->total_cpus);
 
         anode->pid = app_pid;
         anode->refcount = 1;
         anode->next = apps_list;
         anode->cpuset[0] = CPU_ALLOC(cpuinfo->total_cpus);
         anode->cpuset[1] = CPU_ALLOC(cpuinfo->total_cpus);
+        CPU_ZERO_S(sz, anode->cpuset[0]);
+        CPU_ZERO_S(sz, anode->cpuset[1]);
         anode->perf_history = (uint64_t (*)[2]) calloc(cpuinfo->total_cpus + 1, sizeof *anode->perf_history);
         if (apps_list) apps_list->prev = anode;
         apps_list = anode;
