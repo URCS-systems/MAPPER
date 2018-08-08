@@ -1141,15 +1141,16 @@ int main(int argc, char *argv[])
              * give it is the fair share.
              */
             per_app_cpu_budget[j] = fair_share;
-            printf("[APP %6d] Setting fair share \n", apps_sorted[j]->pid);
+            printf("[APP %6d] setting fair share \n", apps_sorted[j]->pid);
           }
 #endif
           /* this really shouldn't be necessary, but it is for some reason
            * I can't explain at the moment
            */
           per_app_cpu_budget[j] = MAX(MIN(per_app_cpu_budget[j], cpuinfo->total_cpus), SAM_MIN_CONTEXTS);
-          printf("[APP %6d] Requiring %d / %d remaining CPUs\n", apps_sorted[j]->pid, per_app_cpu_budget[j],
+          printf("[APP %6d] requiring %d / %d remaining CPUs\n", apps_sorted[j]->pid, per_app_cpu_budget[j],
                  initial_remaining_cpus);
+          printf("[APP %6d] current allocation is %d\n", apps_sorted[j]->pid, curr_alloc_len);
           int diff = initial_remaining_cpus - per_app_cpu_budget[j];
           needs_more[j] = MAX(-diff, 0);
           initial_remaining_cpus = MAX(diff, 0);
@@ -1170,6 +1171,7 @@ int main(int argc, char *argv[])
             initial_remaining_cpus -= added;
             needs_more[j] -= added;
             per_app_cpu_budget[j] += added;
+            printf("[APP %6d] took %d from remaining CPUs\n", apps_sorted[j]->pid, added);
           }
 
           if (needs_more[j] > 0) {
@@ -1343,7 +1345,11 @@ int main(int argc, char *argv[])
           new_cpuset = CPU_ALLOC(cpuinfo->total_cpus);
           CPU_ZERO_S(rem_cpus_sz, new_cpuset);
 
-          assert(per_app_cpu_budget[j] >= SAM_MIN_CONTEXTS);
+          if (per_app_cpu_budget[j] < SAM_MIN_CONTEXTS) {
+              fprintf(stderr, "%s:%d: APP %6d: per_app_cpu_budget[%d] (%d) < %d (SAM_MIN_CONTEXTS) !\n",
+                      __FILE__, __LINE__, apps_sorted[j]->pid, j, per_app_cpu_budget[j], SAM_MIN_CONTEXTS);
+              abort();
+          }
 
           if (i < num_counter_orders) {
             int met = counter_order[i];
