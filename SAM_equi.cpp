@@ -813,9 +813,13 @@ int main(int argc, char *argv[])
         for (struct appinfo *an = apps_list; an; an = an->next) {
           apps_unsorted[i] = an;
           per_app_socket_orders[i] = (int *)calloc(cpuinfo->num_sockets, sizeof *per_app_socket_orders[i]);
+          initial_remaining_cpus -= CPU_COUNT_S(rem_cpus_sz, an->cpuset[0]);
           i++;
         }
       }
+
+      /* this really shouldn't be necessary */
+      initial_remaining_cpus = MIN(MAX(initial_remaining_cpus, 0), cpuinfo->total_cpus);
 
       /*
        * apps_sorted[] will look like:
@@ -850,6 +854,7 @@ int main(int argc, char *argv[])
           const int curr_alloc_len = CPU_COUNT_S(rem_cpus_sz, apps_sorted[j]->cpuset[0]);
 
           //per_app_cpu_budget[j] = MAX((int) apps_sorted[j]->bottleneck[METRIC_ACTIVE], SAM_MIN_CONTEXTS);
+          initial_remaining_cpus += curr_alloc_len;
           per_app_cpu_budget[j] = curr_alloc_len;
 
 #if BINARY
@@ -1139,9 +1144,12 @@ int main(int argc, char *argv[])
             printf("[APP %6d] Setting fair share \n", apps_sorted[j]->pid);
           }
 #endif
+          /* this really shouldn't be necessary, but it is for some reason
+           * I can't explain at the moment
+           */
+          per_app_cpu_budget[j] = MAX(MIN(per_app_cpu_budget[j], cpuinfo->total_cpus), SAM_MIN_CONTEXTS);
           printf("[APP %6d] Requiring %d / %d remaining CPUs\n", apps_sorted[j]->pid, per_app_cpu_budget[j],
                  initial_remaining_cpus);
-          per_app_cpu_budget[j] = MIN(per_app_cpu_budget[j], cpuinfo->total_cpus);
           int diff = initial_remaining_cpus - per_app_cpu_budget[j];
           needs_more[j] = MAX(-diff, 0);
           initial_remaining_cpus = MAX(diff, 0);
