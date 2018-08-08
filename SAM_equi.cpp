@@ -1377,7 +1377,11 @@ int main(int argc, char *argv[])
           char cg_name[256];
 
           snprintf(cg_name, sizeof cg_name, SAM_CGROUP_NAME "/app-%d", apps_sorted[j]->pid);
-          cg_read_intlist(cgroot, cntrlr, cg_name, "cpuset.cpus", &intlist, &intlist_l);
+          if (cg_read_intlist(cgroot, cntrlr, cg_name, "cpuset.cpus", &intlist, &intlist_l) != 0) {
+              fprintf(stderr, "Failed to read APP %6d's cpuset.cpus: %s\n", apps_sorted[j]->pid,
+                      strerror(errno));
+              goto final_stage_failed;
+          }
 
           cpuset_to_intlist(new_cpusets[j], cpuinfo->total_cpus, &mybudget, &mybudget_l);
           intlist_to_string(mybudget, mybudget_l, buf, sizeof buf, ",");
@@ -1413,6 +1417,7 @@ int main(int argc, char *argv[])
             }
           }
 
+final_stage_failed:
           CPU_FREE(new_cpusets[j]);
           free(mybudget);
           free(intlist);
