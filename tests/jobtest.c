@@ -245,7 +245,7 @@ int main(int argc, char *argv[]) {
     printf("Summary:\n");
     for (struct job *jb = job_list; jb; jb = jb->next) {
         int n = 0;
-        printf(" %.40s: %n", jb->name, &n);
+        printf(" %.15s (%.50s): %n", jb->name, jb->argbuf, &n);
         printf("%*lf s (%2d)\n", 75 - n - 2, jb->avg_time, jb->successful_runs);
     }
 
