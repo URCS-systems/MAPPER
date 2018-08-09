@@ -292,7 +292,7 @@ int main(int argc, char *argv[]) {
                 / (jb->successful_runs + 1);
 
             /* compute parsed time */
-            if (parse_result(jb, &parsed_time) != -1)
+            if (jb->filter_cmd && parse_result(jb, &parsed_time) != -1)
                 jb->avg_time2 = (jb->avg_time2 * jb->successful_runs + parsed_time) / (jb->successful_runs + 1);
 
             jb->successful_runs++;
