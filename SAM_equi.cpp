@@ -1277,11 +1277,23 @@ int main(int argc, char *argv[])
             if (needs_more[j] > 0)
               printf("[APP %6d] could not find %d extra contexts\n", apps_sorted[j]->pid, needs_more[j]);
 
+            if (per_app_cpu_budget[j] < SAM_MIN_CONTEXTS) {
+              fprintf(stderr, "%s:%d: APP %6d: per_app_cpu_budget[%d] (%d) < %d (SAM_MIN_CONTEXTS) !\n",
+                      __FILE__, __LINE__, apps_sorted[j]->pid, j, per_app_cpu_budget[j], SAM_MIN_CONTEXTS);
+              abort();
+            }
+
             delete[] spare_cores;
             delete[] candidates;
             delete[] candidates_map;
             delete[] spare_candidates;
             delete[] spare_candidates_map;
+          }
+
+          if (per_app_cpu_budget[j] < SAM_MIN_CONTEXTS) {
+            fprintf(stderr, "%s:%d: APP %6d: per_app_cpu_budget[%d] (%d) < %d (SAM_MIN_CONTEXTS) !\n",
+                    __FILE__, __LINE__, apps_sorted[j]->pid, j, per_app_cpu_budget[j], SAM_MIN_CONTEXTS);
+            abort();
           }
 
           /*
@@ -1344,12 +1356,6 @@ int main(int argc, char *argv[])
 
           new_cpuset = CPU_ALLOC(cpuinfo->total_cpus);
           CPU_ZERO_S(rem_cpus_sz, new_cpuset);
-
-          if (per_app_cpu_budget[j] < SAM_MIN_CONTEXTS) {
-              fprintf(stderr, "%s:%d: APP %6d: per_app_cpu_budget[%d] (%d) < %d (SAM_MIN_CONTEXTS) !\n",
-                      __FILE__, __LINE__, apps_sorted[j]->pid, j, per_app_cpu_budget[j], SAM_MIN_CONTEXTS);
-              abort();
-          }
 
           if (i < num_counter_orders) {
             int met = counter_order[i];
