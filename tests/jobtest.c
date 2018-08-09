@@ -17,15 +17,18 @@
 
 struct job {
     char name[40];
+    char outfile[512];
     struct timespec start, end;
     char *argbuf;
     int argc;
     char *argv[ARG_MAX];
     pid_t pid;
     double avg_time;
+    double avg_time2;
     int successful_runs;
     int failed_runs;
     int total_runs;
+    char *filter_cmd;
     struct job *prev, *next;
 };
 
@@ -78,7 +81,6 @@ static pid_t run_job(struct job *jb) {
     if (jb->pid == 0) {
         /* child */
         pid_t mypid;
-        char fname[512];
         int log_fd;
         
         /* set this process as the session leader,
@@ -87,18 +89,18 @@ static pid_t run_job(struct job *jb) {
         if ((mypid = setsid()) == (pid_t) -1)
             mypid = getpid();
 
-        snprintf(fname, sizeof fname, "%s-v%d.%d.out", jb->name, jb->total_runs + 1, mypid);
+        snprintf(jb->outfile, sizeof jb->outfile, "%s-v%d.%d.out", jb->name, jb->total_runs + 1, mypid);
         printf("[PID %6d] running %s ...\n", mypid, jb->argbuf);
 
-        if ((log_fd = open(fname, O_CREAT | O_RDWR, 0644)) != -1) {
+        if ((log_fd = open(jb->outfile, O_CREAT | O_RDWR, 0644)) != -1) {
             if (dup2(log_fd, STDOUT_FILENO) == -1)
                 fprintf(stderr, "[PID %6d] failed to associate stdout with %s: %m\n", 
-                        mypid, fname);
+                        mypid, jb->outfile);
             if (dup2(log_fd, STDERR_FILENO) == -1)
                 fprintf(stderr, "[PID %6d] failed to associate stderr with %s: %m\n",
-                        mypid, fname);
+                        mypid, jb->outfile);
         } else
-            fprintf(stderr, "[PID %6d] failed to open log file %s: %m\n", mypid, fname);
+            fprintf(stderr, "[PID %6d] failed to open log file %s: %m\n", mypid, jb->outfile);
 
         if (execvp(jb->argv[0], jb->argv) < 0) {
             fprintf(stderr, "failed to run %s: %m\n", jb->argbuf);
@@ -106,12 +108,57 @@ static pid_t run_job(struct job *jb) {
         }
     }
 
+    /* parent */
+    snprintf(jb->outfile, sizeof jb->outfile, "%s-v%d.%d.out", jb->name, jb->total_runs + 1, jb->pid);
+
     signal(SIGTERM, old);
     signal(SIGQUIT, old);
     signal(SIGINT, old);
     signal(SIGALRM, old);
 
     return jb->pid;
+}
+
+static int parse_result(const struct job *jb, double *res)
+{
+    FILE *pf;
+    int ret = 0;
+    char *line = NULL;
+    size_t sz = 0;
+
+    if (jb->filter_cmd != NULL) {
+        char cmdbuf[1024];
+        snprintf(cmdbuf, sizeof cmdbuf, "cat %s | %s", jb->outfile, jb->filter_cmd);
+        
+        if (!(pf = popen(cmdbuf, "r"))) {
+            fprintf(stderr, "WARNING: could not run filter '%s' for %s: %m\n", cmdbuf, jb->name);
+            return -1;
+        }
+    } else {
+        if (!(pf = fopen(jb->outfile, "r"))) {
+            fprintf(stderr, "WARNING: could not open log file '%s' for %s: %m\n", jb->outfile, jb->name);
+            return -1;
+        }
+    }
+
+    /* we expect the result on a single line */
+    if (getline(&line, &sz, pf) == -1) {
+        ret = -1;
+        fprintf(stderr, "WARNING: could not read line from output of %s: %m\n", jb->name);
+    } else if (sscanf(line, "%lf", res) != 1) {
+        ret = -1;
+        if (errno != 0)
+            fprintf(stderr, "WARNING: could not parse result for %s: %m\n", jb->name);
+        else
+            fprintf(stderr, "WARNING: could not parse result for %s: expected double, got '%s'\n", jb->name, line);
+    }
+
+    free(line);
+    if (jb->filter_cmd != NULL)
+        pclose(pf);
+    else
+        fclose(pf);
+    return ret;
 }
 
 int main(int argc, char *argv[]) {
@@ -143,6 +190,7 @@ int main(int argc, char *argv[]) {
         char *save = NULL;
         unsigned seconds = 0;
         char *sp_ptr = NULL;
+        char *pipe_ptr = NULL;
 
         if (nlptr) *nlptr = '\0';
 
@@ -167,15 +215,23 @@ int main(int argc, char *argv[]) {
             return 1;
         }
 
+        if ((pipe_ptr = strchr(line, '|'))) {
+            jb->filter_cmd = strdup(pipe_ptr + 1);
+            *pipe_ptr = '\0';
+        }
+
         jb->argbuf = strdup(sp_ptr + 1);
         strncpy(jb->name, line, MIN((long)(sizeof jb->name - 1), sp_ptr - line));
         token = sp_ptr + 1;
 
         for ( ; (token = strtok_r(token, " ", &save)) != NULL; token = NULL) {
             if (jb->argc >= ARG_MAX - 1) {
-                printf("Too many args (%d).\n", jb->argc);
+                fprintf(stderr, "Too many args (%d).\n", jb->argc);
                 break;
             }
+            if (strcmp(token, "|") == 0)
+                break;
+
             jb->argv[jb->argc++] = strdup(token);
         }
         jb->argv[jb->argc++] = NULL;
@@ -219,6 +275,7 @@ int main(int argc, char *argv[]) {
 
         if (WIFEXITED(wstatus) && WEXITSTATUS(wstatus) == 0) {
             struct timespec diff_ts = jb->end;
+            double parsed_time = 0;
             if (diff_ts.tv_nsec < jb->start.tv_nsec) {
                 diff_ts.tv_sec = diff_ts.tv_sec - jb->start.tv_sec - 1;
                 diff_ts.tv_nsec = 1000000000 - (jb->start.tv_nsec - diff_ts.tv_nsec);
@@ -229,6 +286,11 @@ int main(int argc, char *argv[]) {
 
             jb->avg_time = (jb->avg_time * jb->successful_runs + (diff_ts.tv_sec + (double) diff_ts.tv_nsec / 1e+9))
                 / (jb->successful_runs + 1);
+
+            /* compute parsed time */
+            if (parse_result(jb, &parsed_time) != -1)
+                jb->avg_time2 = (jb->avg_time2 * jb->successful_runs + parsed_time) / (jb->successful_runs + 1);
+
             jb->successful_runs++;
         } else {
             fprintf(stderr, "WARNING: Ignoring result for %s since it failed\n", jb->name);
@@ -247,8 +309,21 @@ int main(int argc, char *argv[]) {
     printf("Summary:\n");
     for (struct job *jb = job_list; jb; jb = jb->next) {
         int n = 0;
+        int rem = 0;
+        double val = jb->avg_time;
+        const char *str = "";
         printf(" %.15s (%.50s): %n", jb->name, jb->argbuf, &n);
-        printf("%*lf s (%2d)\n", 75 - n - 2, jb->avg_time, jb->successful_runs);
+        rem = 80 - 5 - 2 - n;
+        if (jb->filter_cmd) {
+            val = jb->avg_time2;
+            /*
+             * this means we're reporting the real time it took the algorithm to run,
+             * according to when the child started its timer
+             */
+            str = "r";
+            rem -= 1;
+        }
+        printf("%*lf s (%2d%.1s)\n", rem, val, jb->successful_runs, str);
     }
 
     return 0;
