@@ -10,6 +10,8 @@
 #include <signal.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <sys/time.h>
+#include <sys/resource.h>
 
 #define MIN(a,b)    ((a) < (b) ? (a) : (b))
 #define ARG_MAX     20
@@ -82,6 +84,7 @@ static pid_t run_job(struct job *jb) {
         /* child */
         pid_t mypid;
         int log_fd;
+        struct rlimit lm;
         
         /* set this process as the session leader,
          * which creates a new process group that
@@ -90,6 +93,15 @@ static pid_t run_job(struct job *jb) {
             mypid = getpid();
 
         snprintf(jb->outfile, sizeof jb->outfile, "%s-v%d.%d.out", jb->name, jb->total_runs + 1, mypid);
+
+        if (getrlimit(RLIMIT_NOFILE, &lm) != -1) {
+            lm.rlim_max = 1 << 14;
+            lm.rlim_cur = lm.rlim_max;
+
+            if (setrlimit(RLIMIT_NOFILE, &lm) == -1)
+                fprintf(stderr, "WARNING: failed to set file limit for %s to %lu: %m\n", jb->name, lm.rlim_cur);
+        }
+
         printf("[PID %6d] running %s ...\n", mypid, jb->argbuf);
 
         if ((log_fd = open(jb->outfile, O_CREAT | O_RDWR, 0644)) != -1) {
