@@ -149,8 +149,12 @@ static int parse_result(const struct job *jb, double *res)
         ret = -1;
         if (errno != 0)
             fprintf(stderr, "WARNING: could not parse result for %s: %m\n", jb->name);
-        else
-            fprintf(stderr, "WARNING: could not parse result for %s: expected double, got '%s'\n", jb->name, line);
+        else {
+            char *nl_ptr = strchr(line, '\n');
+            if (nl_ptr) *nl_ptr = '\0';
+            fprintf(stderr, "WARNING: could not parse result for %s: expected double, got '%s%s'\n", jb->name, line,
+                    isatty(fileno(stderr)) ? "\x1B[0m" : "");
+        }
     }
 
     free(line);
