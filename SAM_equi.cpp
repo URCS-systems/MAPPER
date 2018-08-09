@@ -205,6 +205,7 @@ struct cpuinfo *cpuinfo;
 struct appinfo **apps_array;
 struct appinfo *apps_list;
 int num_apps = 0;
+int num_procs = 0;
 
 static inline int guess_optimization(const int budget, enum metric bottleneck)
 {
@@ -288,6 +289,8 @@ static void manage(pid_t pid, pid_t app_pid)
 
   pnode->initialize(pid, app_pid);
 
+  num_procs++;
+
   /* add to apps list and array */
 
   if (!apps_array[app_pid]) {
@@ -339,6 +342,8 @@ static void unmanage(pid_t pid, pid_t app_pid)
 
   if (pnode == pdata_list)
     pdata_list = pnode->next;
+
+  num_procs--;
 
   delete pnode;
 
