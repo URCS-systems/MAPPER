@@ -91,10 +91,8 @@ void stop_read_counters(const int fds[], size_t num_fds, const uint64_t ids[], u
 
         for (uint64_t i = 0; i < rf->nr && i < num_fds && i < MAX_RFVALUES; ++i) {
             for (size_t j = 0; j < num_fds; ++j)
-                if (rf->values[i].id == ids[j]) {
+                if (rf->values[i].id == ids[j])
                     *valptrs[j] = rf->values[i].value;
-                    break;
-                }
         }
     } else {
         /*
