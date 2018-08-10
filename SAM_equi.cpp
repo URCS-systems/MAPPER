@@ -420,6 +420,13 @@ void update_children(pid_t app_pid)
        * isn't already one */
       if (!pdata_array[task]) {
         manage(task, app_pid);
+      } else if (pdata_array[task]->app_pid != app_pid) {
+        /* 
+         * this PID was reused under another application
+         * before we could detect the change.
+         */
+        unmanage(task, pdata_array[task]->app_pid);
+        manage(task, app_pid);
       }
 
       if (pdata_array[task])
