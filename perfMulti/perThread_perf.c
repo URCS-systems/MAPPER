@@ -8,6 +8,8 @@
 #include <errno.h>
 #define PRINT true
 
+#define MAX_RFVALUES 8  /* this is the maximum number of values we're reading at a time */
+
 uint64_t event_codes[N_EVENTS] = {
     [EVENT_SNP]		    = 0x06d2,
     [EVENT_INSTRUCTIONS]    = 0xc0,
@@ -27,6 +29,13 @@ const char *event_names[N_EVENTS] = {
     [EVENT_LLC_MISSES]          = "LLC misses",
         
 };
+
+struct perf_group event_groups[] = {
+    { .items = { EVENT_SNP, EVENT_INSTRUCTIONS, EVENT_REMOTE_HITM }, .size = 3 },
+    { .items = { EVENT_UNHALTED_CYCLES, EVENT_LLC_MISSES }, .size = 2 }
+};
+
+#define N_GROUPS (sizeof(event_groups) / sizeof(event_groups[0]))
 
 struct perf_stat *threads = NULL;
 
@@ -67,36 +76,38 @@ void start_event(int fd)
     }
 }
 
-void stop_read_counters(struct read_format *rf, int fd, int fd2, int fd3, char *buf, size_t size, uint64_t *val1,
-                        uint64_t *val2, uint64_t *val3, uint64_t id1, uint64_t id2, uint64_t id3)
-{
-    if (fd != -1) { 
-        ioctl(fd, PERF_EVENT_IOC_DISABLE, PERF_IOC_FLAG_GROUP); //no need to stop since we are not using it
-        read(fd, buf, size);
+void stop_read_counters(const int fds[], size_t num_fds, const uint64_t ids[], uint64_t *valptrs[]) {
+    if (num_fds < 1)
+        return;
 
-        uint64_t i;
-        // read counter values
-        for (i = 0; i < rf->nr; i++) {
-            if (rf->values[i].id == id1) 
-                *val1 = rf->values[i].value;
+    /* the first fd is the group leader */
+    if (fds[0] != -1) {
+        struct read_format *rf;
+        char buf[offsetof(struct read_format, values) + MAX_RFVALUES * sizeof(rf->values[0])];
 
-            if (rf->values[i].id == id2) 
-                *val2 = rf->values[i].value;
-	     
-	    if (rf->values[i].id==id3)
-		 *val3 = rf->values[i].value;
+        rf = (void *) buf;   /* alias rf as buf */
+        ioctl(fds[0], PERF_EVENT_IOC_DISABLE, PERF_IOC_FLAG_GROUP); //no need to stop since we are not using it
+        read(fds[0], buf, sizeof buf);
+
+        for (uint64_t i = 0; i < rf->nr && i < num_fds && i < MAX_RFVALUES; ++i) {
+            for (size_t j = 0; j < num_fds; ++j)
+                if (rf->values[i].id == ids[j]) {
+                    *valptrs[j] = rf->values[i].value;
+                    break;
+                }
         }
-
+    } else {
+        /*
+         * File descriptor was -1, hence no monitoring happened.
+         * Set these unmonitored event counts to 0.
+         */
+        for (size_t i = 0; i < num_fds; ++i)
+            *valptrs[i] = 0;
     }
-    else //file descriptor was -1, hence no monitoring happened
-    {  //set these unmonitored event counts to 0
-        *val1 = 0;
-        *val2 = 0;
-	*val3=  0;
-    }	     
-    close(fd);
-    close(fd2);
-    close(fd3);
+
+    /* close all events */
+    for (size_t i = 0; i < num_fds; ++i)
+        close(fds[i]);
 }
 
 void count_event_perfMultiplex(pid_t tid[], int index_tid)
@@ -110,59 +121,47 @@ void count_event_perfMultiplex(pid_t tid[], int index_tid)
     // iterate through all threads
     int i;
     for (i = 0; i < index_tid; i++) {
-        // initialize read format descriptor for each thread and all events for that
-        // thread
-        int j;
-        for (j = 0; j < 2; j++)
-            threads[i].rf[j] = (struct read_format *) threads[i].buf[j];
-
         // set up performance counters
-        for (j = 0; j < 2; j++) {
-	    if(j ==0) {
-
-		    setPerfAttr(&threads[i].pea, 0, -1, &threads[i].fd[0],&threads[i].id[0], -1, tid[i]); // measure tid statistics on any cpu
-                    setPerfAttr(&threads[i].pea, 1, threads[i].fd[0], &threads[i].fd[1], &threads[i].id[1], -1, tid[i]);
-		    setPerfAttr(&threads[i].pea, 2, threads[i].fd[0], &threads[i].fd[2], &threads[i].id[2], -1, tid[i]);
-	    }
-	    else {
-                    setPerfAttr(&threads[i].pea, 3, -1, &threads[i].fd[3],&threads[i].id[3], -1, tid[i]); // measure tid statistics on any cpu
-                    setPerfAttr(&threads[i].pea, 4, threads[i].fd[3], &threads[i].fd[4], &threads[i].id[4], -1, tid[i]);
-
-
-	    }//else close	    
+        for (size_t grp = 0; grp < N_GROUPS; grp++) {
+            for (int k = 0; k < event_groups[grp].size; ++k) {
+                int evt = event_groups[grp].items[k];
+                int group_fd = k == 0 ? -1 : threads[i].fd[event_groups[grp].items[0]];
+                setPerfAttr(&threads[i].pea, evt, group_fd, &threads[i].fd[evt], &threads[i].id[evt], -1, tid[i]);
+            }
         }
     }
-	//start counters
-	
+    //start counters
 
-       // duration of count
-      //  nanosleep(&tim, NULL);
-                
+    // duration of count
+    //  nanosleep(&tim, NULL);
+
     //Read two buffers
-    int j;
-    for (j = 0; j < 2; j++) {
+    size_t grp;
+    for (grp = 0; grp < N_GROUPS; grp++) {
+        int i; 
 
-           int i; 
-	 for(i=0;i<index_tid;i++){
-          start_event(threads[i].fd[j*3]);   }
-	    
-	    // duration of count
-	  nanosleep(&tim, NULL);
-	    //
+        for (i = 0; i < index_tid; i++)
+            start_event(threads[i].fd[event_groups[grp].items[0]]);
 
-            
+        // duration of count
+        nanosleep(&tim, NULL);
+
         // stop counters and read counter values
         for (i = 0; i < index_tid; i++) {
-            size_t size = sizeof threads[i].buf[j];
-	    //only read no stop, stop disabled
-	    if (j==0) 
-            stop_read_counters(threads[i].rf[0], threads[i].fd[0], threads[i].fd[1], threads[i].fd[2], threads[i].buf[0], size,
-                           &threads[i].val[0], &threads[i].val[1], &threads[i].val[2], threads[i].id[0], threads[i].id[1], threads[i].id[2]);
-	    else
-	   stop_read_counters(threads[i].rf[1], threads[i].fd[3], threads[i].fd[4], threads[i].fd[5], threads[i].buf[1], size,
-		          &threads[i].val[3], &threads[i].val[4], &threads[i].val[5], threads[i].id[3], threads[i].id[4], threads[i].id[5]);		 
+            int fds[MAX_EVENT_GROUP_SZ];
+            uint64_t ids[MAX_EVENT_GROUP_SZ];
+            uint64_t *vps[MAX_EVENT_GROUP_SZ];
+
+            for (int k = 0; k < event_groups[grp].size; ++k) {
+                int evt = event_groups[grp].items[k];
+                fds[k] = threads[i].fd[evt];
+                ids[k] = threads[i].id[evt];
+                vps[k] = &threads[i].val[evt];
+            }
+
+            stop_read_counters(fds, event_groups[grp].size, ids, vps);
         }
-    } // for j close
+    }
 }
 
 void displayTIDEvents(pid_t tid[], int index_tid)

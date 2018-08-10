@@ -25,6 +25,7 @@
 #include <sys/types.h>
 #include <time.h>
 #include <unistd.h>
+#include <stddef.h>
 
 /*
 #define EVENT1  0x3c    //UNHALTED_CORE_CYCLE
@@ -66,19 +67,19 @@ struct read_format {
     struct {
         uint64_t value;
         uint64_t id;
-
     } values[];
+};
+
+#define MAX_EVENT_GROUP_SZ 10
+
+struct perf_group {
+    enum perf_event items[MAX_EVENT_GROUP_SZ];
+    int size;
 };
 
 struct perf_stat {
     // values of event count
     uint64_t val[N_EVENTS];
-
-    // buffer for reading couple events together
-    char buf[N_EVENTS / 2][4096];
-    // read format pointers for each buffer (group of events), each group contains
-    // two events
-    struct read_format *rf[N_EVENTS / 2];
 
     struct perf_event_attr pea; // perf_event attribute
 
@@ -95,6 +96,7 @@ extern "C" {
 
 extern const char *event_names[];
 extern uint64_t event_codes[];
+extern struct perf_group event_groups[];
 extern struct perf_stat *threads;
 
 void setPerfAttr(struct perf_event_attr *pea, enum perf_event event, int group_fd, int *fd, uint64_t *id,
@@ -102,8 +104,18 @@ void setPerfAttr(struct perf_event_attr *pea, enum perf_event event, int group_f
 
 void start_event(int fd);
 
-void stop_read_counters(struct read_format *rf, int fd, int fd2, int fd3, char *buf, size_t size, uint64_t *val1,
-                        uint64_t *val2, uint64_t *val3, uint64_t id1, uint64_t id2, uint64_t id3);
+/**
+ * Stop monitoring the events and read their values.
+ *
+ * @fds = list of perf event file descriptors, with first fd being group leader
+ * @num_fds = number of file descriptors
+ * @ids = list of corresponding IDs; size is num_fds
+ * @valptrs = list of pointers to values to write perf counters into; size is num_fds
+ * 
+ * Note: each element of @ids is associated with an element of @valptrs, so that
+ * a perf event with an ID == @ids[i] means the value will be written into @valptrs[i].
+ */
+void stop_read_counters(const int fds[], size_t num_fds, const uint64_t ids[], uint64_t *valptrs[]);
 
 void count_event_perfMultiplex(pid_t tid[], int index_tid);
 
