@@ -171,7 +171,7 @@ struct appinfo {
    */
   bool exploring;
   /**
-   * This is the [appno]'th app.
+   * This is the [appno]'th app, starting from 0.
    */
   int appno;
   struct appinfo *prev, *next;
@@ -309,7 +309,6 @@ static void manage(pid_t pid, pid_t app_pid)
       apps_list->prev = anode;
     apps_list = anode;
     apps_array[app_pid] = anode;
-    anode->appno = num_apps;
     num_apps++;
     printf("Managing new application %d\n", app_pid);
   } else
@@ -762,6 +761,11 @@ int main(int argc, char *argv[])
 
     /* derive app statistics */
     for (struct appinfo *an = apps_list; an; an = an->next) {
+      if (an == apps_list)
+          an->appno = num_apps - 1;
+      else
+          an->appno = an->prev->appno - 1;
+
       an->metric[METRIC_ACTIVE] = an->value[0];
       an->metric[METRIC_AVGIPC] = (an->value[1] * 1000) / (1 + an->value[0]);
       an->metric[METRIC_MEM] = an->value[8];
