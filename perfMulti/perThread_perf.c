@@ -8,8 +8,6 @@
 #include <errno.h>
 #define PRINT true
 
-#define MAX_RFVALUES 8  /* this is the maximum number of values we're reading at a time */
-
 uint64_t event_codes[N_EVENTS] = {
     [EVENT_SNP]		    = 0x06d2,
     [EVENT_INSTRUCTIONS]    = 0xc0,
@@ -83,13 +81,13 @@ void stop_read_counters(const int fds[], size_t num_fds, const uint64_t ids[], u
     /* the first fd is the group leader */
     if (fds[0] != -1) {
         struct read_format *rf;
-        char buf[offsetof(struct read_format, values) + MAX_RFVALUES * sizeof(rf->values[0])];
+        char buf[offsetof(struct read_format, values) + MAX_EVENT_GROUP_SZ * sizeof(rf->values[0])];
 
         rf = (void *) buf;   /* alias rf as buf */
         ioctl(fds[0], PERF_EVENT_IOC_DISABLE, PERF_IOC_FLAG_GROUP); //no need to stop since we are not using it
         read(fds[0], buf, sizeof buf);
 
-        for (uint64_t i = 0; i < rf->nr && i < num_fds && i < MAX_RFVALUES; ++i) {
+        for (uint64_t i = 0; i < rf->nr && i < num_fds && i < MAX_EVENT_GROUP_SZ; ++i) {
             for (size_t j = 0; j < num_fds; ++j)
                 if (rf->values[i].id == ids[j])
                     *valptrs[j] = rf->values[i].value;
