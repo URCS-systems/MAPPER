@@ -32,7 +32,7 @@
 #include "mapper.h"
 #include "util.h"
 #include "perfMulti/perThread_perf.h"
-
+#include <sys/time.h>
 // SAM
 #define MAX_COUNTERS 50
 #define SHAR_PROCESSORS_CORE 20
@@ -68,6 +68,8 @@ enum metric counter_order[MAX_COUNTERS];
 int ordernum = 0;
 int init_thresholds = 0;
 
+struct timeval start_time,finish_time;
+struct timeval perf_start, perf_finish;
 struct countervalues {
   double ratio;
   uint64_t val, delta;
@@ -702,6 +704,10 @@ int main(int argc, char *argv[])
     goto END;
 
   while (!stoprun) {
+   
+ //start time for this iteration
+ gettimeofday(&start_time, NULL);
+
     pid_t pids_to_monitor[8192];
     int pids_to_monitor_l = 0;
 
@@ -746,11 +752,17 @@ int main(int argc, char *argv[])
       // printf("%d\n", pd->pid);
     }
 
+     gettimeofday(&perf_start, NULL);
     // Comment added by Sayak Chakraborti:
     count_event_perfMultiplex(pids_to_monitor,
-                              pids_to_monitor_l); // Comment added by Sayak Chakraborti, call this function to
+    		    pids_to_monitor_l); // Comment added by Sayak Chakraborti, call this function to
+     gettimeofday(&perf_finish, NULL);
+     printf("Elapsed time for perf setup/start/stop/read: %.7f seconds\n",(((perf_finish.tv_sec*1000000.0)+perf_finish.tv_usec)-((perf_start.tv_sec*1000000.0)+perf_start.tv_usec))/1000000.0);
+
+
     // count for all tids for a particular interval of time
     displayTIDEvents(pids_to_monitor, pids_to_monitor_l); // required to copy values to my data structures
+    
 
     /* read counters */
     for (PerfData *pd = pdata_list; pd; pd = pd->next) {
@@ -1392,6 +1404,9 @@ final_stage_failed:
       memset(an->bottleneck, 0, sizeof an->bottleneck);
       memset(an->value, 0, sizeof an->value);
     }
+      gettimeofday(&finish_time, NULL);
+      
+      printf("Elapsed time for this iteration: %.7f seconds\n",(((finish_time.tv_sec*1000000.0)+finish_time.tv_usec)-((start_time.tv_sec*1000000.0)+start_time.tv_usec))/1000000.0);
   }
 
   printf("Stopping...\n");
