@@ -331,6 +331,8 @@ static void unmanage(pid_t pid, pid_t app_pid)
   /* remove process */
   PerfData *pnode = pdata_array[pid];
 
+  pdata_array[pid] = NULL;
+
   if (pnode->prev) {
     PerfData *prev = pnode->prev;
     prev->next = pnode->next;
