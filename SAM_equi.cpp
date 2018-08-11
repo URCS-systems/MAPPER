@@ -77,10 +77,12 @@ struct counter {
   uint64_t auxval1, auxval2;
 };
 
-class PerfData {
+/**
+ * Information about a process.
+ */
+struct procinfo {
   public:
   void initialize(int tid, int app_tid);
-  ~PerfData();
   void readCounters(int index); // argument added for copying
   void printCounters(int index); // argument added for copying
 
@@ -93,11 +95,11 @@ class PerfData {
   int bottleneck[MAX_COUNTERS];
   int active;
   double val[MAX_COUNTERS];
-  PerfData *prev, *next;
+  struct procinfo *prev, *next;
 };
 
-PerfData *pdata_list;
-PerfData **pdata_array;
+struct procinfo *procs_list;
+struct procinfo **procs_array;
 
 const char *metric_names[N_METRICS] = {
     [METRIC_ACTIVE] = "Active",
@@ -266,16 +268,16 @@ void siginfo_handler(int sig)
 
 static void manage(pid_t pid, pid_t app_pid)
 {
-  assert(pdata_array[pid] == NULL);
+  assert(procs_array[pid] == NULL);
 
-  /* add new perfdata */
-  PerfData *pnode = new PerfData();
+  /* add new process info */
+  struct procinfo *pnode = new procinfo();
 
-  pdata_array[pid] = pnode;
-  if (pdata_list)
-    pdata_list->prev = pnode;
-  pnode->next = pdata_list;
-  pdata_list = pnode;
+  procs_array[pid] = pnode;
+  if (procs_list)
+    procs_list->prev = pnode;
+  pnode->next = procs_list;
+  procs_list = pnode;
 
   pnode->initialize(pid, app_pid);
 
@@ -315,24 +317,24 @@ static void manage(pid_t pid, pid_t app_pid)
 
 static void unmanage(pid_t pid, pid_t app_pid)
 {
-  assert(pdata_array[pid] != NULL);
+  assert(procs_array[pid] != NULL);
 
   /* remove process */
-  PerfData *pnode = pdata_array[pid];
+  struct procinfo *pnode = procs_array[pid];
 
-  pdata_array[pid] = NULL;
+  procs_array[pid] = NULL;
 
   if (pnode->prev) {
-    PerfData *prev = pnode->prev;
+    struct procinfo *prev = pnode->prev;
     prev->next = pnode->next;
   }
   if (pnode->next) {
-    PerfData *next = pnode->next;
+    struct procinfo *next = pnode->next;
     next->prev = pnode->prev;
   }
 
-  if (pnode == pdata_list)
-    pdata_list = pnode->next;
+  if (pnode == procs_list)
+    procs_list = pnode->next;
 
   num_procs--;
 
@@ -409,19 +411,19 @@ void update_children(pid_t app_pid)
 
       /* this is a valid pid, so add a perfdata for it if there
        * isn't already one */
-      if (!pdata_array[task]) {
+      if (!procs_array[task]) {
         manage(task, app_pid);
-      } else if (pdata_array[task]->app_pid != app_pid) {
+      } else if (procs_array[task]->app_pid != app_pid) {
         /* 
          * this PID was reused under another application
          * before we could detect the change.
          */
-        unmanage(task, pdata_array[task]->app_pid);
+        unmanage(task, procs_array[task]->app_pid);
         manage(task, app_pid);
       }
 
-      if (pdata_array[task])
-        pdata_array[task]->touched = true;
+      if (procs_array[task])
+        procs_array[task]->touched = true;
 
       snprintf(path, sizeof path, "/proc/%d/task/%d/children", cur_pid, task);
 
@@ -441,7 +443,7 @@ void update_children(pid_t app_pid)
   }
 }
 
-void PerfData::initialize(pid_t tid, pid_t app_tid)
+void procinfo::initialize(pid_t tid, pid_t app_tid)
 {
   // printf("[PID %6d] performing init\n", tid);
   pid = tid;
@@ -449,7 +451,7 @@ void PerfData::initialize(pid_t tid, pid_t app_tid)
   app_pid = app_tid;
   init = 1;
 }
-void PerfData::printCounters(int index)
+void procinfo::printCounters(int index)
 {
   const int counter_event_pairs[][2] = {
       { 0, EVENT_UNHALTED_CYCLES },
@@ -543,7 +545,7 @@ void PerfData::printCounters(int index)
       printf("[PID %6d] detected counter %s\n", pid, metric_names[i]);
   }
 }
-void PerfData::readCounters(int index)
+void procinfo::readCounters(int index)
 {
   printf("[APP %6d | TID %5d] readCounters():\n", app_pid, pid);
   if (pid == 0)
@@ -630,7 +632,7 @@ int main(int argc, char *argv[])
     }
     printf("pid_max = %d\n", pid_max);
     apps_array = (struct appinfo **)calloc(pid_max, sizeof *apps_array);
-    pdata_array = (PerfData **)calloc(pid_max, sizeof *pdata_array);
+    procs_array = (struct procinfo **)calloc(pid_max, sizeof *procs_array);
     fclose(pid_max_fp);
 
     /* get CPU topology */
@@ -706,7 +708,7 @@ int main(int argc, char *argv[])
         return 0;
       }
 
-      for (PerfData *pd = pdata_list; pd; pd = pd->next)
+      for (struct procinfo *pd = procs_list; pd; pd = pd->next)
         pd->touched = false;
 
       while ((de = readdir(dr)) != NULL) {
@@ -717,8 +719,8 @@ int main(int argc, char *argv[])
       }
 
       /* remove all untouched children */
-      for (PerfData *pd = pdata_list; pd;) {
-        PerfData *next = pd->next;
+      for (struct procinfo *pd = procs_list; pd;) {
+        struct procinfo *next = pd->next;
         if (!pd->touched)
           unmanage(pd->pid, pd->app_pid);
         pd = next;
@@ -728,7 +730,7 @@ int main(int argc, char *argv[])
     }
 
     // printf("PIDs tracked:\n");
-    for (PerfData *pd = pdata_list; pd; pd = pd->next) {
+    for (struct procinfo *pd = procs_list; pd; pd = pd->next) {
       pids_to_monitor[pids_to_monitor_l++] = pd->pid;
       // printf("%d\n", pd->pid);
     }
@@ -746,7 +748,7 @@ int main(int argc, char *argv[])
     
 
     /* read counters */
-    for (PerfData *pd = pdata_list; pd; pd = pd->next) {
+    for (struct procinfo *pd = procs_list; pd; pd = pd->next) {
       int my_index = searchTID(pd->pid);
       if (my_index != -1)
         pd->printCounters(my_index);
