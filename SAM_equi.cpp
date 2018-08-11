@@ -70,24 +70,11 @@ int init_thresholds = 0;
 
 struct timeval start_time,finish_time;
 struct timeval perf_start, perf_finish;
-struct countervalues {
+
+struct counter {
   double ratio;
   uint64_t val, delta;
   uint64_t auxval1, auxval2;
-  char name[64];
-  uint64_t seqno;
-};
-
-struct options_t {
-  int num_groups;
-  int format_group;
-  int inherit;
-  int print;
-  int pin;
-  pid_t pid;
-  struct countervalues counters[MAX_COUNTERS];
-  int countercount;
-  int lock;
 };
 
 class PerfData {
@@ -97,8 +84,9 @@ class PerfData {
   void readCounters(int index); // argument added for copying
   void printCounters(int index); // argument added for copying
 
-  int init;
-  struct options_t *options;
+  bool init;
+  struct counter counters[MAX_COUNTERS];
+  int num_counters;
   bool touched;
   pid_t app_pid;
   pid_t pid;
@@ -457,8 +445,7 @@ void PerfData::initialize(pid_t tid, pid_t app_tid)
 {
   // printf("[PID %6d] performing init\n", tid);
   pid = tid;
-  options = new options_t();
-  options->countercount = 10;
+  num_counters = 10;
   app_pid = app_tid;
   init = 1;
 }
@@ -477,21 +464,20 @@ void PerfData::printCounters(int index)
       int ctr = counter_event_pairs[i][0];
       int evt = counter_event_pairs[i][1];
 
-      options->counters[ctr].delta = THREADS.event[index][evt];
+      counters[ctr].delta = THREADS.event[index][evt];
   }
 
   int i;
-  int num = options->countercount;
   active = 0;
 
   if (print_counters)
     printf("%20s: %20d\n", "TID", THREADS.tid[index]);
 
-  for (i = 0; i < num; i++) {
-    options->counters[i].val += options->counters[i].delta;
+  for (i = 0; i < num_counters; i++) {
+    counters[i].val += counters[i].delta;
     bottleneck[i] = 0;
     if (apps_array[app_pid])
-      apps_array[app_pid]->value[i] += options->counters[i].delta;
+      apps_array[app_pid]->value[i] += counters[i].delta;
   }
 
   for (int k = 0; k < num_pairs; ++k) {
@@ -500,23 +486,23 @@ void PerfData::printCounters(int index)
 
       if (print_counters)
         printf("%20s: %'20" PRIu64 " %'20" PRIu64 " (%.2f%% scaling, ena=%'" PRIu64 ", run=%'" PRIu64 ")\n",
-                event_names[evt], options->counters[ctr].val, options->counters[ctr].delta,
-                (1.0 - options->counters[ctr].ratio) * 100.0, options->counters[ctr].auxval1, 
-                options->counters[ctr].auxval2);
+                event_names[evt], counters[ctr].val, counters[ctr].delta,
+                (1.0 - counters[ctr].ratio) * 100.0, counters[ctr].auxval1, 
+                counters[ctr].auxval2);
   }
 
   i = 0;
-  if (options->counters[i].delta > (uint64_t)thresh_pt[i]) {
+  if (counters[i].delta > (uint64_t)thresh_pt[i]) {
     active = 1;
-    val[i] = options->counters[i].delta;
+    val[i] = counters[i].delta;
     bottleneck[i] = 1;
     if (apps_array[app_pid])
       apps_array[app_pid]->bottleneck[i] += 1;
   }
 
   i = 1;
-  if ((options->counters[i].delta * 1000) / (1 + options->counters[0].delta) > (uint64_t)thresh_pt[i]) {
-    val[i] = (1000 * options->counters[1].delta) / (options->counters[0].delta + 1);
+  if ((counters[i].delta * 1000) / (1 + counters[0].delta) > (uint64_t)thresh_pt[i]) {
+    val[i] = (1000 * counters[1].delta) / (counters[0].delta + 1);
     bottleneck[i] = 1;
     if (apps_array[app_pid])
       apps_array[app_pid]->bottleneck[i] += 1;
@@ -525,7 +511,7 @@ void PerfData::printCounters(int index)
   }
 
   i = 2; // Mem
-  long tempvar = (((double)cpuinfo->clock_rate * options->counters[8].delta) / (options->counters[0].delta + 1));
+  long tempvar = (((double)cpuinfo->clock_rate * counters[8].delta) / (counters[0].delta + 1));
   if (tempvar > thresh_pt[i]) {
     val[i] = tempvar;
     bottleneck[i] = 1;
@@ -536,7 +522,7 @@ void PerfData::printCounters(int index)
   }
 
   i = 3; // snp
-  tempvar = (((double)cpuinfo->clock_rate * (options->counters[7].delta)) / (options->counters[0].delta + 1));
+  tempvar = (((double)cpuinfo->clock_rate * (counters[7].delta)) / (counters[0].delta + 1));
   if (tempvar > thresh_pt[i]) {
     val[i] = tempvar;
     bottleneck[i] = 1;
@@ -547,7 +533,7 @@ void PerfData::printCounters(int index)
   }
 
   i = 4; // cross soc
-  tempvar = (((double)cpuinfo->clock_rate * options->counters[9].delta) / (options->counters[0].delta + 1));
+  tempvar = (((double)cpuinfo->clock_rate * counters[9].delta) / (counters[0].delta + 1));
   if (tempvar > thresh_pt[i]) {
     val[i] = tempvar;
     bottleneck[i] = 1;
@@ -560,11 +546,11 @@ void PerfData::printCounters(int index)
 void PerfData::readCounters(int index)
 {
   printf("[APP %6d | TID %5d] readCounters():\n", app_pid, pid);
-  if (pid == 0) // options->pid
+  if (pid == 0)
   {
     return;
   }
-  if (kill(pid, 0) < 0) // options->pid
+  if (kill(pid, 0) < 0)
     if (errno == ESRCH) {
       printf("Process %d does not exist \n", pid);
       return;
@@ -575,11 +561,6 @@ void PerfData::readCounters(int index)
 
   printCounters(index);
   return;
-}
-
-PerfData::~PerfData()
-{
-  delete options;
 }
 
 void setup_file_limits()
