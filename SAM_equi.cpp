@@ -50,7 +50,6 @@
 #define PRINT_BOTTLENECK false
 #define HILL_CLIMBING false
 #define HILL_SUSPEND 5 //suspend for these many iterations when local optima found
-#define ORIGINAL true
 #define FAIR true
 #define BIN_INITIAL_RESOURCE 12
 // Will be initialized anyway
@@ -835,7 +834,12 @@ int main(int argc, char *argv[])
       for (int i = 0; i < N_METRICS; ++i) {
         range_ends[i + 1] = range_ends[i];
         for (int j = 0; j < num_apps; ++j) {
-          if (apps_unsorted[j] && (i >= num_counter_orders || apps_unsorted[j]->bottleneck[counter_order[i]] > 0)) {
+          if (apps_unsorted[j] 
+#if !(FAIR || HILL_CLIMBING)
+                  && (i >= num_counter_orders || apps_unsorted[j]->bottleneck[counter_order[i]] > 0)) {
+#else
+                  && counter_order[i] == METRIC_AVGIPC) {
+#endif
             apps_sorted[range_ends[i + 1]++] = apps_unsorted[j];
             apps_unsorted[j] = NULL;
           }
