@@ -54,7 +54,7 @@
 #define HILL_CLIMBING false
 #define HILL_SUSPEND 5 //suspend for these many iterations when local optima found
 #define ORIGINAL true
-#define FAIR false
+#define FAIR true
 #define BIN_INITIAL_RESOURCE 12
 // Will be initialized anyway
 int num_counter_orders = 6;
@@ -891,16 +891,17 @@ int main(int argc, char *argv[])
 	  if (apps_sorted[j]->times_allocated > SAM_INITIAL_ALLOCS) {
 
               //If fair share has changed then adjust to new fair share
-	        if (apps_sorted[j]->curr_fair_share != fair_share && apps_sorted[j]->perf_history[fair_share] != 0)
+	        if (apps_sorted[j]->curr_fair_share != fair_share && apps_sorted[j]->perf_history[fair_share] != 0) {
 			                apps_sorted[j]->curr_fair_share = fair_share;
-
+                                         printf("FAIR SHARE [APP %6d] changing fair share\n", apps_sorted[j]->pid); 
+					} 
 
 
 	  }
 	  else {
                 //Give the application fair share
                        per_app_cpu_budget[j] = fair_share;
-		       printf("[APP %6d] setting fair share \n", apps_sorted[j]->pid);
+		       printf("FAIR SHARE [APP %6d] setting fair share \n", apps_sorted[j]->pid);
 
               }		  
 	
@@ -925,6 +926,7 @@ int main(int argc, char *argv[])
 	    if (apps_sorted[j]->curr_fair_share != fair_share && apps_sorted[j]->perf_history[fair_share] != 0)
 	        apps_sorted[j]->curr_fair_share = fair_share;
 
+	         uint64_t curr_perf = history[0];
 
 	     if (apps_sorted[j]->times_allocated > 1) {
 		  /* Compare current performance with previous performance, if this application
@@ -938,7 +940,7 @@ int main(int argc, char *argv[])
          	  if (curr_perf > prev_perf && (curr_perf - prev_perf) / (double)prev_perf >= SAM_PERF_THRESH &&
 									                         apps_sorted[j]->exploring) {
 			  /* Keep going in the same direction. */
-		                 printf("[APP %6d] continuing in same direction \n", apps_sorted[j]->pid);
+		                 printf("HILL CLIMBING [APP %6d] continuing in same direction \n", apps_sorted[j]->pid);
 		                  if (prev_alloc_len < curr_alloc_len)
 		                       per_app_cpu_budget[j] = MIN(per_app_cpu_budget[j] + SAM_PERF_STEP, cpuinfo->total_cpus);
 			           else
@@ -957,16 +959,16 @@ int main(int argc, char *argv[])
 					                apps_sorted[j]->exploring = true;
 					                 per_app_cpu_budget[j] = guess;
 					              }
-				 printf("[APP %6d] exploring %d -> %d\n", apps_sorted[j]->pid, curr_alloc_len, per_app_cpu_budget[j]);
+				 printf("HILL CLIMBING [APP %6d] exploring %d -> %d\n", apps_sorted[j]->pid, curr_alloc_len, per_app_cpu_budget[j]);
 		              } else {
 			              apps_sorted[j]->exploring = false;
-			              printf("[APP %6d] exploring no more \n", apps_sorted[j]->pid);
+			              printf("HILL CLIMBING [APP %6d] exploring no more \n", apps_sorted[j]->pid);
 			                  if (random() / (double)RAND_MAX <= SAM_DISTURB_PROB) {
 			                      int guess = per_app_cpu_budget[j] + guess_optimization(per_app_cpu_budget[j], counter_order[i]);
 			                      guess = MAX(MIN(guess, cpuinfo->total_cpus), SAM_MIN_CONTEXTS);
 			                      apps_sorted[j]->exploring = true;
 			                       per_app_cpu_budget[j] = guess;
-					        printf("[APP %6d] random disturbance: %d -> %d\n", apps_sorted[j]->pid, curr_alloc_len,
+					        printf("HILL CLIMBING [APP %6d] random disturbance: %d -> %d\n", apps_sorted[j]->pid, curr_alloc_len,
 								                           per_app_cpu_budget[j]);
 					      }
 					}
@@ -981,14 +983,14 @@ int main(int argc, char *argv[])
 				                            guess = MAX(MIN(guess, cpuinfo->total_cpus), SAM_MIN_CONTEXTS);
 						             apps_sorted[j]->exploring = true;
 						             per_app_cpu_budget[j] = guess;
-			printf("[APP %6d] random disturbance: %d -> %d\n", apps_sorted[j]->pid, curr_alloc_len, per_app_cpu_budget[j]);
+			printf("HILL CLIMBING [APP %6d] random disturbance: %d -> %d\n", apps_sorted[j]->pid, curr_alloc_len, per_app_cpu_budget[j]);
 															              }
 	               } else {
 			    /* If this app has never been given an allocation, the first allocation we should
 			     * give it is the fair share.  */
 
 			                   per_app_cpu_budget[j] = fair_share;
-			               printf("[APP %6d] setting fair share \n", apps_sorted[j]->pid);
+			               printf("HILL CLIMBING [APP %6d] setting fair share \n", apps_sorted[j]->pid);
                               }
 #else
           /*
