@@ -35,14 +35,11 @@
 #include <sys/time.h>
 // SAM
 #define MAX_COUNTERS 50
-#define SHAR_PROCESSORS_CORE 20
 #define SHAR_MEM_THRESH 100000000
 #define SHAR_COHERENCE_THRESH 550000
 #define SHAR_HCOH_THRESH 1100000
 #define SHAR_REMOTE_THRESH 2700000
 #define SHAR_IPC_THRESH 700
-#define SHAR_COH_IND (SHAR_COHERENCE_THRESH / 2)
-#define SHAR_PHY_CORE 10
 #define SAM_MIN_CONTEXTS 4
 #define SAM_MIN_QOS 0.75
 #define SAM_PERF_THRESH 0.05 /* in fraction of previous performance */
@@ -70,46 +67,35 @@ int init_thresholds = 0;
 
 struct timeval start_time,finish_time;
 struct timeval perf_start, perf_finish;
-struct countervalues {
+
+struct counter {
   double ratio;
   uint64_t val, delta;
   uint64_t auxval1, auxval2;
-  char name[64];
-  uint64_t seqno;
 };
 
-struct options_t {
-  int num_groups;
-  int format_group;
-  int inherit;
-  int print;
-  int pin;
-  pid_t pid;
-  struct countervalues counters[MAX_COUNTERS];
-  int countercount;
-  int lock;
-};
-
-class PerfData {
+/**
+ * Information about a process.
+ */
+struct procinfo {
   public:
-  void initialize(int tid, int app_tid);
-  ~PerfData();
   void readCounters(int index); // argument added for copying
   void printCounters(int index); // argument added for copying
 
-  int init;
-  struct options_t *options;
+  bool init;
+  struct counter counters[MAX_COUNTERS];
+  int num_counters;
   bool touched;
   pid_t app_pid;
   pid_t pid;
   int bottleneck[MAX_COUNTERS];
   int active;
   double val[MAX_COUNTERS];
-  PerfData *prev, *next;
+  struct procinfo *prev, *next;
 };
 
-PerfData *pdata_list;
-PerfData **pdata_array;
+struct procinfo *procs_list;
+struct procinfo **procs_array;
 
 const char *metric_names[N_METRICS] = {
     [METRIC_ACTIVE] = "Active",
@@ -278,18 +264,21 @@ void siginfo_handler(int sig)
 
 static void manage(pid_t pid, pid_t app_pid)
 {
-  assert(pdata_array[pid] == NULL);
+  assert(procs_array[pid] == NULL);
 
-  /* add new perfdata */
-  PerfData *pnode = new PerfData();
+  /* add new process info */
+  struct procinfo *pnode = new procinfo();
 
-  pdata_array[pid] = pnode;
-  if (pdata_list)
-    pdata_list->prev = pnode;
-  pnode->next = pdata_list;
-  pdata_list = pnode;
+  procs_array[pid] = pnode;
+  if (procs_list)
+    procs_list->prev = pnode;
+  pnode->next = procs_list;
+  procs_list = pnode;
 
-  pnode->initialize(pid, app_pid);
+  pnode->pid = pid;
+  pnode->num_counters = 10;
+  pnode->app_pid = app_pid;
+  pnode->init = true;
 
   num_procs++;
 
@@ -327,24 +316,24 @@ static void manage(pid_t pid, pid_t app_pid)
 
 static void unmanage(pid_t pid, pid_t app_pid)
 {
-  assert(pdata_array[pid] != NULL);
+  assert(procs_array[pid] != NULL);
 
   /* remove process */
-  PerfData *pnode = pdata_array[pid];
+  struct procinfo *pnode = procs_array[pid];
 
-  pdata_array[pid] = NULL;
+  procs_array[pid] = NULL;
 
   if (pnode->prev) {
-    PerfData *prev = pnode->prev;
+    struct procinfo *prev = pnode->prev;
     prev->next = pnode->next;
   }
   if (pnode->next) {
-    PerfData *next = pnode->next;
+    struct procinfo *next = pnode->next;
     next->prev = pnode->prev;
   }
 
-  if (pnode == pdata_list)
-    pdata_list = pnode->next;
+  if (pnode == procs_list)
+    procs_list = pnode->next;
 
   num_procs--;
 
@@ -421,19 +410,19 @@ void update_children(pid_t app_pid)
 
       /* this is a valid pid, so add a perfdata for it if there
        * isn't already one */
-      if (!pdata_array[task]) {
+      if (!procs_array[task]) {
         manage(task, app_pid);
-      } else if (pdata_array[task]->app_pid != app_pid) {
+      } else if (procs_array[task]->app_pid != app_pid) {
         /* 
          * this PID was reused under another application
          * before we could detect the change.
          */
-        unmanage(task, pdata_array[task]->app_pid);
+        unmanage(task, procs_array[task]->app_pid);
         manage(task, app_pid);
       }
 
-      if (pdata_array[task])
-        pdata_array[task]->touched = true;
+      if (procs_array[task])
+        procs_array[task]->touched = true;
 
       snprintf(path, sizeof path, "/proc/%d/task/%d/children", cur_pid, task);
 
@@ -453,16 +442,7 @@ void update_children(pid_t app_pid)
   }
 }
 
-void PerfData::initialize(pid_t tid, pid_t app_tid)
-{
-  // printf("[PID %6d] performing init\n", tid);
-  pid = tid;
-  options = new options_t();
-  options->countercount = 10;
-  app_pid = app_tid;
-  init = 1;
-}
-void PerfData::printCounters(int index)
+void procinfo::printCounters(int index)
 {
   const int counter_event_pairs[][2] = {
       { 0, EVENT_UNHALTED_CYCLES },
@@ -477,21 +457,20 @@ void PerfData::printCounters(int index)
       int ctr = counter_event_pairs[i][0];
       int evt = counter_event_pairs[i][1];
 
-      options->counters[ctr].delta = THREADS.event[index][evt];
+      counters[ctr].delta = THREADS.event[index][evt];
   }
 
   int i;
-  int num = options->countercount;
   active = 0;
 
   if (print_counters)
     printf("%20s: %20d\n", "TID", THREADS.tid[index]);
 
-  for (i = 0; i < num; i++) {
-    options->counters[i].val += options->counters[i].delta;
+  for (i = 0; i < num_counters; i++) {
+    counters[i].val += counters[i].delta;
     bottleneck[i] = 0;
     if (apps_array[app_pid])
-      apps_array[app_pid]->value[i] += options->counters[i].delta;
+      apps_array[app_pid]->value[i] += counters[i].delta;
   }
 
   for (int k = 0; k < num_pairs; ++k) {
@@ -500,23 +479,23 @@ void PerfData::printCounters(int index)
 
       if (print_counters)
         printf("%20s: %'20" PRIu64 " %'20" PRIu64 " (%.2f%% scaling, ena=%'" PRIu64 ", run=%'" PRIu64 ")\n",
-                event_names[evt], options->counters[ctr].val, options->counters[ctr].delta,
-                (1.0 - options->counters[ctr].ratio) * 100.0, options->counters[ctr].auxval1, 
-                options->counters[ctr].auxval2);
+                event_names[evt], counters[ctr].val, counters[ctr].delta,
+                (1.0 - counters[ctr].ratio) * 100.0, counters[ctr].auxval1, 
+                counters[ctr].auxval2);
   }
 
   i = 0;
-  if (options->counters[i].delta > (uint64_t)thresh_pt[i]) {
+  if (counters[i].delta > (uint64_t)thresh_pt[i]) {
     active = 1;
-    val[i] = options->counters[i].delta;
+    val[i] = counters[i].delta;
     bottleneck[i] = 1;
     if (apps_array[app_pid])
       apps_array[app_pid]->bottleneck[i] += 1;
   }
 
   i = 1;
-  if ((options->counters[i].delta * 1000) / (1 + options->counters[0].delta) > (uint64_t)thresh_pt[i]) {
-    val[i] = (1000 * options->counters[1].delta) / (options->counters[0].delta + 1);
+  if ((counters[i].delta * 1000) / (1 + counters[0].delta) > (uint64_t)thresh_pt[i]) {
+    val[i] = (1000 * counters[1].delta) / (counters[0].delta + 1);
     bottleneck[i] = 1;
     if (apps_array[app_pid])
       apps_array[app_pid]->bottleneck[i] += 1;
@@ -525,7 +504,7 @@ void PerfData::printCounters(int index)
   }
 
   i = 2; // Mem
-  long tempvar = (((double)cpuinfo->clock_rate * options->counters[8].delta) / (options->counters[0].delta + 1));
+  long tempvar = (((double)cpuinfo->clock_rate * counters[8].delta) / (counters[0].delta + 1));
   if (tempvar > thresh_pt[i]) {
     val[i] = tempvar;
     bottleneck[i] = 1;
@@ -536,7 +515,7 @@ void PerfData::printCounters(int index)
   }
 
   i = 3; // snp
-  tempvar = (((double)cpuinfo->clock_rate * (options->counters[7].delta)) / (options->counters[0].delta + 1));
+  tempvar = (((double)cpuinfo->clock_rate * (counters[7].delta)) / (counters[0].delta + 1));
   if (tempvar > thresh_pt[i]) {
     val[i] = tempvar;
     bottleneck[i] = 1;
@@ -547,7 +526,7 @@ void PerfData::printCounters(int index)
   }
 
   i = 4; // cross soc
-  tempvar = (((double)cpuinfo->clock_rate * options->counters[9].delta) / (options->counters[0].delta + 1));
+  tempvar = (((double)cpuinfo->clock_rate * counters[9].delta) / (counters[0].delta + 1));
   if (tempvar > thresh_pt[i]) {
     val[i] = tempvar;
     bottleneck[i] = 1;
@@ -557,14 +536,14 @@ void PerfData::printCounters(int index)
       printf("[PID %6d] detected counter %s\n", pid, metric_names[i]);
   }
 }
-void PerfData::readCounters(int index)
+void procinfo::readCounters(int index)
 {
   printf("[APP %6d | TID %5d] readCounters():\n", app_pid, pid);
-  if (pid == 0) // options->pid
+  if (pid == 0)
   {
     return;
   }
-  if (kill(pid, 0) < 0) // options->pid
+  if (kill(pid, 0) < 0)
     if (errno == ESRCH) {
       printf("Process %d does not exist \n", pid);
       return;
@@ -575,11 +554,6 @@ void PerfData::readCounters(int index)
 
   printCounters(index);
   return;
-}
-
-PerfData::~PerfData()
-{
-  delete options;
 }
 
 void setup_file_limits()
@@ -625,20 +599,6 @@ int main(int argc, char *argv[])
   signal(SIGUSR1, &siginfo_handler);
 
   if (init_thresholds == 0) {
-    thresh_pt[METRIC_ACTIVE] = 1000000; // cycles
-    thresh_pt[METRIC_AVGIPC] = 70; // instructions scaled to 100
-    thresh_pt[METRIC_MEM] = SHAR_MEM_THRESH / SHAR_PROCESSORS_CORE; // Mem
-    thresh_pt[METRIC_INTRA] = SHAR_COHERENCE_THRESH;
-    thresh_pt[METRIC_INTER] = SHAR_COHERENCE_THRESH;
-    // thresh_pt[METRIC_REMOTE] = SHAR_REMOTE_THRESH;
-
-    ordernum = 0;
-    counter_order[ordernum++] = METRIC_INTER; // LLC_MISSES
-    counter_order[ordernum++] = METRIC_INTRA;
-    counter_order[ordernum++] = METRIC_MEM;
-    counter_order[ordernum++] = METRIC_AVGIPC;
-    num_counter_orders = ordernum;
-
     /* create array */
     FILE *pid_max_fp;
     int pid_max = 0;
@@ -649,7 +609,7 @@ int main(int argc, char *argv[])
     }
     printf("pid_max = %d\n", pid_max);
     apps_array = (struct appinfo **)calloc(pid_max, sizeof *apps_array);
-    pdata_array = (PerfData **)calloc(pid_max, sizeof *pdata_array);
+    procs_array = (struct procinfo **)calloc(pid_max, sizeof *procs_array);
     fclose(pid_max_fp);
 
     /* get CPU topology */
@@ -669,6 +629,22 @@ int main(int argc, char *argv[])
       goto END;
     }
     mode_t oldmask = umask(0);
+
+    /* initialize thresholds */
+    thresh_pt[METRIC_ACTIVE] = 1000000; // cycles
+    thresh_pt[METRIC_AVGIPC] = 70; // instructions scaled to 100
+    thresh_pt[METRIC_MEM] = SHAR_MEM_THRESH / cpuinfo->total_cores; // Mem
+    thresh_pt[METRIC_INTRA] = SHAR_COHERENCE_THRESH;
+    thresh_pt[METRIC_INTER] = SHAR_COHERENCE_THRESH;
+    // thresh_pt[METRIC_REMOTE] = SHAR_REMOTE_THRESH;
+
+    ordernum = 0;
+    counter_order[ordernum++] = METRIC_INTER; // LLC_MISSES
+    counter_order[ordernum++] = METRIC_INTRA;
+    counter_order[ordernum++] = METRIC_MEM;
+    counter_order[ordernum++] = METRIC_AVGIPC;
+    num_counter_orders = ordernum;
+
 
     /* create run directory */
     if (mkdir(SAM_RUN_DIR, 01777) < 0 && errno != EEXIST) {
@@ -725,7 +701,7 @@ int main(int argc, char *argv[])
         return 0;
       }
 
-      for (PerfData *pd = pdata_list; pd; pd = pd->next)
+      for (struct procinfo *pd = procs_list; pd; pd = pd->next)
         pd->touched = false;
 
       while ((de = readdir(dr)) != NULL) {
@@ -736,8 +712,8 @@ int main(int argc, char *argv[])
       }
 
       /* remove all untouched children */
-      for (PerfData *pd = pdata_list; pd;) {
-        PerfData *next = pd->next;
+      for (struct procinfo *pd = procs_list; pd;) {
+        struct procinfo *next = pd->next;
         if (!pd->touched)
           unmanage(pd->pid, pd->app_pid);
         pd = next;
@@ -747,7 +723,7 @@ int main(int argc, char *argv[])
     }
 
     // printf("PIDs tracked:\n");
-    for (PerfData *pd = pdata_list; pd; pd = pd->next) {
+    for (struct procinfo *pd = procs_list; pd; pd = pd->next) {
       pids_to_monitor[pids_to_monitor_l++] = pd->pid;
       // printf("%d\n", pd->pid);
     }
@@ -765,7 +741,7 @@ int main(int argc, char *argv[])
     
 
     /* read counters */
-    for (PerfData *pd = pdata_list; pd; pd = pd->next) {
+    for (struct procinfo *pd = procs_list; pd; pd = pd->next) {
       int my_index = searchTID(pd->pid);
       if (my_index != -1)
         pd->printCounters(my_index);
