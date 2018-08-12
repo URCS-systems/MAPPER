@@ -82,7 +82,6 @@ struct counter {
  */
 struct procinfo {
   public:
-  void initialize(int tid, int app_tid);
   void readCounters(int index); // argument added for copying
   void printCounters(int index); // argument added for copying
 
@@ -279,7 +278,10 @@ static void manage(pid_t pid, pid_t app_pid)
   pnode->next = procs_list;
   procs_list = pnode;
 
-  pnode->initialize(pid, app_pid);
+  pnode->pid = pid;
+  pnode->num_counters = 10;
+  pnode->app_pid = app_pid;
+  pnode->init = true;
 
   num_procs++;
 
@@ -443,14 +445,6 @@ void update_children(pid_t app_pid)
   }
 }
 
-void procinfo::initialize(pid_t tid, pid_t app_tid)
-{
-  // printf("[PID %6d] performing init\n", tid);
-  pid = tid;
-  num_counters = 10;
-  app_pid = app_tid;
-  init = 1;
-}
 void procinfo::printCounters(int index)
 {
   const int counter_event_pairs[][2] = {
