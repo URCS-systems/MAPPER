@@ -35,14 +35,11 @@
 #include <sys/time.h>
 // SAM
 #define MAX_COUNTERS 50
-#define SHAR_PROCESSORS_CORE 20
 #define SHAR_MEM_THRESH 100000000
 #define SHAR_COHERENCE_THRESH 550000
 #define SHAR_HCOH_THRESH 1100000
 #define SHAR_REMOTE_THRESH 2700000
 #define SHAR_IPC_THRESH 700
-#define SHAR_COH_IND (SHAR_COHERENCE_THRESH / 2)
-#define SHAR_PHY_CORE 10
 #define SAM_MIN_CONTEXTS 4
 #define SAM_MIN_QOS 0.75
 #define SAM_PERF_THRESH 0.05 /* in fraction of previous performance */
@@ -602,20 +599,6 @@ int main(int argc, char *argv[])
   signal(SIGUSR1, &siginfo_handler);
 
   if (init_thresholds == 0) {
-    thresh_pt[METRIC_ACTIVE] = 1000000; // cycles
-    thresh_pt[METRIC_AVGIPC] = 70; // instructions scaled to 100
-    thresh_pt[METRIC_MEM] = SHAR_MEM_THRESH / SHAR_PROCESSORS_CORE; // Mem
-    thresh_pt[METRIC_INTRA] = SHAR_COHERENCE_THRESH;
-    thresh_pt[METRIC_INTER] = SHAR_COHERENCE_THRESH;
-    // thresh_pt[METRIC_REMOTE] = SHAR_REMOTE_THRESH;
-
-    ordernum = 0;
-    counter_order[ordernum++] = METRIC_INTER; // LLC_MISSES
-    counter_order[ordernum++] = METRIC_INTRA;
-    counter_order[ordernum++] = METRIC_MEM;
-    counter_order[ordernum++] = METRIC_AVGIPC;
-    num_counter_orders = ordernum;
-
     /* create array */
     FILE *pid_max_fp;
     int pid_max = 0;
@@ -646,6 +629,22 @@ int main(int argc, char *argv[])
       goto END;
     }
     mode_t oldmask = umask(0);
+
+    /* initialize thresholds */
+    thresh_pt[METRIC_ACTIVE] = 1000000; // cycles
+    thresh_pt[METRIC_AVGIPC] = 70; // instructions scaled to 100
+    thresh_pt[METRIC_MEM] = SHAR_MEM_THRESH / cpuinfo->total_cores; // Mem
+    thresh_pt[METRIC_INTRA] = SHAR_COHERENCE_THRESH;
+    thresh_pt[METRIC_INTER] = SHAR_COHERENCE_THRESH;
+    // thresh_pt[METRIC_REMOTE] = SHAR_REMOTE_THRESH;
+
+    ordernum = 0;
+    counter_order[ordernum++] = METRIC_INTER; // LLC_MISSES
+    counter_order[ordernum++] = METRIC_INTRA;
+    counter_order[ordernum++] = METRIC_MEM;
+    counter_order[ordernum++] = METRIC_AVGIPC;
+    num_counter_orders = ordernum;
+
 
     /* create run directory */
     if (mkdir(SAM_RUN_DIR, 01777) < 0 && errno != EEXIST) {
