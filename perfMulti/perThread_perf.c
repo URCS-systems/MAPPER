@@ -6,7 +6,7 @@
 #include <stdbool.h>
 #include <assert.h>
 #include <errno.h>
-#define PRINT true
+#define PRINT false
 
 uint64_t event_codes[N_EVENTS] = {
     [EVENT_SNP]		    = 0x06d2,
@@ -187,6 +187,7 @@ void displayTIDEvents(pid_t tid[], int index_tid)
     } // for close
 
     free(threads);
+		threads = NULL;
     // printf("=================================================================\n");
 }
 

@@ -104,6 +104,14 @@ const char *metric_names[N_METRICS] = {
     [METRIC_INTER]  = "Inter-socket communication",
 };
 
+struct OMPdata
+{
+  double progress;
+  int valid_progress;
+  int numthreads;
+  int valid_threads;
+};
+
 struct appinfo {
   /**
    * application PID
@@ -182,10 +190,15 @@ struct appinfo {
    */
   int bin_search_resource; 
   int bin_direction;
+	/* Shared memory for OpenMP communication */
+	struct OMPdata *OMPptr;
+	char OMPname[100];
+	int OMPfd;
+	int OMPvalid;
 };
 
 bool stoprun = false;
-bool print_counters = true;
+bool print_counters = false;
 bool print_proc_creation = false;
 struct cpuinfo *cpuinfo;
 
@@ -321,6 +334,24 @@ static void manage(pid_t pid, pid_t app_pid)
     apps_list = anode;
     apps_array[app_pid] = anode;
     num_apps++;
+
+		/* Check if OMP shared memory is opened */
+		anode->OMPvalid = 0;
+		anode->OMPfd = 0;
+		anode->OMPptr = NULL;
+		sprintf(anode->OMPname, "MAP-%d",app_pid);
+
+		anode->OMPfd = shm_open (anode->OMPname, O_RDWR, 0777);
+	  if (anode->OMPfd == -1) 
+  	  printf("Error. |%s| shared memory segment does not exist\n", anode->OMPname);
+		else {
+	  	anode->OMPptr = (struct OMPdata*) mmap(NULL, sizeof(struct OMPdata),
+  	  	PROT_READ | PROT_WRITE, MAP_SHARED, anode->OMPfd, 0);
+		  if (anode->OMPptr == MAP_FAILED) 
+  		  printf("Mmap failed \n");
+			else
+				anode->OMPvalid = 1;
+		} 
     printf("Managing new application %d\n", app_pid);
   } else
     apps_array[app_pid]->refcount++;
@@ -381,6 +412,13 @@ static void unmanage(pid_t pid, pid_t app_pid)
 
     if (anode == apps_list)
       apps_list = anode->next;
+
+		if (anode->OMPvalid) {
+			shm_unlink(anode->OMPname);
+			anode->OMPptr = NULL;
+			anode->OMPvalid = 0;
+			anode->OMPfd = 0;
+		}
 
     printf("Unmanaged application %d\n", app_pid);
 
@@ -601,6 +639,9 @@ int main(int argc, char *argv[])
 {
   int init_error = 0;
 
+  size_t rem_cpus_sz;
+  int pids_to_monitor_l = 0;
+
   setlocale(LC_ALL, "");
 
   if (geteuid() != 0) {
@@ -701,10 +742,8 @@ int main(int argc, char *argv[])
 
   while (!stoprun) {
     pid_t pids_to_monitor[8192];
-    int pids_to_monitor_l = 0;
 
     cpu_set_t *remaining_cpus;
-    size_t rem_cpus_sz;
 
     /* get iteration start time */
     clock_gettime(CLOCK_MONOTONIC_RAW, &start_time);
@@ -742,9 +781,10 @@ int main(int argc, char *argv[])
     }
 
     // printf("PIDs tracked:\n");
+		pids_to_monitor_l = 0;
     for (struct procinfo *pd = procs_list; pd; pd = pd->next) {
       pids_to_monitor[pids_to_monitor_l++] = pd->pid;
-      // printf("%d\n", pd->pid);
+      //printf("%d\n", pd->pid);
     }
 
     clock_gettime(CLOCK_MONOTONIC_RAW, &perf_start);
@@ -769,6 +809,27 @@ int main(int argc, char *argv[])
       else
           an->appno = an->prev->appno - 1;
 
+			if (an->OMPvalid) {
+				if (an->OMPptr) {
+					if (an->OMPptr->valid_progress)
+						printf("[APP %6d] has valid progress of %f \n", an->pid, an->OMPptr->progress);
+					else
+						printf("[APP %6d] has no valid progress \n", an->pid);
+				}
+			}
+			else {
+				an->OMPfd = shm_open (an->OMPname, O_RDWR, 0777);
+				if (an->OMPfd == -1)
+					printf("Error. |%s| shared memory segment does not exist\n", an->OMPname);
+				else {
+					an->OMPptr = (struct OMPdata*)mmap(NULL, sizeof(struct OMPdata),
+						PROT_READ | PROT_WRITE, MAP_SHARED, an->OMPfd, 0);
+					if (an->OMPptr == MAP_FAILED)
+						printf("Mmap failed \n");
+					else
+						an->OMPvalid = 1;
+				}
+			}
       an->metric[METRIC_ACTIVE] = an->value[0];
       an->metric[METRIC_AVGIPC] = (an->value[1] * 1000) / (1 + an->value[0]);
       an->metric[METRIC_MEM] = an->value[8];
@@ -1377,6 +1438,15 @@ int main(int argc, char *argv[])
               if ((int) mybudget_l == fair_share)
                 apps_sorted[j]->curr_fair_share = mybudget_l;
               printf("\t\tset CPU budget to %s\n", buf);
+
+							if (apps_sorted[j]->OMPvalid) {
+								if (apps_sorted[j]->OMPptr) {
+									apps_sorted[j]->OMPptr->numthreads = CPU_COUNT_S(rem_cpus_sz, apps_sorted[j]->cpuset[0]);
+									apps_sorted[j]->OMPptr->valid_threads = 1;
+									printf("[App %6d]: Updated the shared memory with %d CPUs \n", 
+											apps_sorted[j]->pid, apps_sorted[j]->OMPptr->numthreads);
+								}
+							}
             }
           }
 
