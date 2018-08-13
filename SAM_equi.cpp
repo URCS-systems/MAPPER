@@ -50,7 +50,7 @@
 #define PRINT_BOTTLENECK false
 #define HILL_CLIMBING false
 #define HILL_SUSPEND 5 //suspend for these many iterations when local optima found
-#define FAIR true
+#define FAIR false
 #define BIN_INITIAL_RESOURCE 12
 // Will be initialized anyway
 int num_counter_orders = 6;
@@ -216,6 +216,27 @@ static inline int guess_optimization(const int budget, enum metric bottleneck)
   }
 
   return f * SAM_PERF_STEP;
+}
+
+static inline int determine_step_size(enum metric bottleneck, int curr_alloc, int dir)
+{
+	const int cpus_per_socket = cpuinfo->sockets[0].num_cpus;
+	
+	if (bottleneck ==  METRIC_INTER || bottleneck == METRIC_INTRA) {
+		if (curr_alloc <= cpus_per_socket)
+			return SAM_PERF_STEP;
+		else {
+			if (dir == 1)
+				return cpus_per_socket - (curr_alloc % cpus_per_socket);
+			else {
+				if (curr_alloc % cpus_per_socket)
+  	    	return (curr_alloc % cpus_per_socket);
+				else
+					return cpus_per_socket;
+			}
+		}
+	}
+	return SAM_PERF_STEP;
 }
 
 /**
@@ -1007,15 +1028,18 @@ int main(int argc, char *argv[])
                * Change requested resources.
                */
               if (curr_perf > prev_perf && (curr_perf - prev_perf) / (double)prev_perf >= SAM_PERF_THRESH &&
-                  apps_sorted[j]->exploring) {
+                  apps_sorted[j]->exploring && (prev_alloc_len != curr_alloc_len)) {
                 /* Keep going in the same direction. */
                 printf("[APP %6d] continuing in same direction \n", apps_sorted[j]->pid);
                 if (prev_alloc_len < curr_alloc_len)
-                  per_app_cpu_budget[j] = MIN(per_app_cpu_budget[j] + SAM_PERF_STEP, cpuinfo->total_cpus);
+                  per_app_cpu_budget[j] = MIN(per_app_cpu_budget[j] + 
+										determine_step_size(counter_order[i], curr_alloc_len, 1), cpuinfo->total_cpus);
                 else
-                  per_app_cpu_budget[j] = MAX(per_app_cpu_budget[j] - SAM_PERF_STEP, SAM_MIN_CONTEXTS);
+                  per_app_cpu_budget[j] = MAX(per_app_cpu_budget[j] - 
+										determine_step_size(counter_order[i], curr_alloc_len, -1), SAM_MIN_CONTEXTS);
               } else {
-                if (curr_perf < prev_perf && (prev_perf - curr_perf) / (double)prev_perf >= SAM_PERF_THRESH) {
+                if (curr_perf < prev_perf && (prev_perf - curr_perf) / (double)prev_perf >= SAM_PERF_THRESH &&
+										(prev_alloc_len != curr_alloc_len)) {
                   if (apps_sorted[j]->exploring) {
                     /*
                      * Revert to previous count if performance reduction was great enough.
