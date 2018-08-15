@@ -6,7 +6,7 @@ all: jobtest
 	sudo setcap cap_sys_resource+ep jobtest
 	setcap -v cap_sys_resource+ep jobtest
 
-jobtest: jobtest.c ../util.c
+jobtest: jobtest.c ../util.c ../cpuinfo.c
 
 clean:
 	$(RM) jobtest

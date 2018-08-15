@@ -25,7 +25,7 @@ char *intlist_to_string(const int *list,
 void cpuset_to_intlist(const cpu_set_t *set,
                        int num_cpus, 
                        int **listp, 
-                       int *list_l);
+                       size_t *list_l);
 
 void intlist_to_cpuset(const int *list,
                        size_t length,

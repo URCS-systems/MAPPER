@@ -83,7 +83,7 @@ void *monitor_cpuset_changes(void *arg) {
     /* read procfs every second and compare change in cpusets */
     while (!wants_to_quit) {
         for (struct job *jb = job_list; jb; jb = jb->next) {
-            char cmd[512];
+            char cmd[1024];
             char *buf;
             FILE *pf;
             int *intlist = NULL;
@@ -93,8 +93,12 @@ void *monitor_cpuset_changes(void *arg) {
 
             pthread_mutex_lock(&jb->mtx);
 
-            snprintf(cmd, sizeof cmd - 1, 
-                    "cat /proc/%d/status | grep Cpus_allowed_list | awk '{print $2}'", jb->pid);
+            /* hack */
+            if (strstr(jb->argv[0], "sam-launch") != NULL)
+                snprintf(cmd, sizeof cmd - 1, "cat /proc/$(cat /proc/%d/task/%d/children | awk '{print $1}')/status | grep Cpus_allowed_list | awk '{print $2}'", jb->pid, jb->pid);
+            else
+                snprintf(cmd, sizeof cmd - 1, 
+                        "cat /proc/%d/status | grep Cpus_allowed_list | awk '{print $2}'", jb->pid);
 
             if (!(pf = popen(cmd, "r"))) {
                 fprintf(stderr, "WARNING: %10s: failed to read /proc/%d/status: %m\n", jb->name, jb->pid);
@@ -103,6 +107,7 @@ void *monitor_cpuset_changes(void *arg) {
             }
 
             fscanf(pf, "%ms", &buf);
+            printf("buf = %s\n", buf);
             if (!buf || string_to_intlist(buf, &intlist, &intlist_l) != 0) {
                 if (errno == 0)
                     fprintf(stderr, "WARNING: %10s: expected intlist, found '%s'\n", jb->name, buf);
@@ -119,7 +124,20 @@ void *monitor_cpuset_changes(void *arg) {
                 continue;
             }
 
+            printf("[PID %6d] before:", jb->pid);
+            for (size_t k = 0; k < intlist_l; ++k) {
+                printf("%d,", intlist[k]);
+            }
+            printf("\n");
+
             intlist_to_cpuset(intlist, intlist_l, &set, nprocs);
+            cpuset_to_intlist(set, nprocs, &intlist, &intlist_l);
+
+            printf("[PID %6d] after:", jb->pid);
+            for (size_t k = 0; k < intlist_l; ++k) {
+                printf("%d,", intlist[k]);
+            }
+            printf("\n");
 
             if (!jb->cpuset) {
                 /* first read */
@@ -133,8 +151,16 @@ void *monitor_cpuset_changes(void *arg) {
                 int diff = 0;
                 CPU_ZERO_S(cpus_sz, tmp1);
                 CPU_ZERO_S(cpus_sz, tmp2);
-                CPU_OR_S(cpus_sz, tmp1, jb->cpuset, set);
-                CPU_XOR_S(cpus_sz, tmp2, jb->cpuset, tmp1);
+                CPU_AND_S(cpus_sz, tmp1, jb->cpuset, set);
+                CPU_XOR_S(cpus_sz, tmp2, set, tmp1);
+
+                cpuset_to_intlist(jb->cpuset, nprocs, &intlist, &intlist_l);
+
+                printf("[PID %6d] old cpuset:", jb->pid);
+                for (size_t k = 0; k < intlist_l; ++k) {
+                    printf("%d,", intlist[k]);
+                }
+                printf("\n");
 
                 if ((diff = CPU_COUNT_S(cpus_sz, tmp2)) > 0) {
                     jb->context_changes += diff;

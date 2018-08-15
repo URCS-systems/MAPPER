@@ -25,7 +25,7 @@ char *intlist_to_string(const int *list,
 void cpuset_to_intlist(const cpu_set_t *set,
                        int num_cpus, 
                        int **listp, 
-                       int *list_l) {
+                       size_t *list_l) {
     const size_t cpus_sz = CPU_ALLOC_SIZE(num_cpus);
     *listp = (int*) calloc(num_cpus, sizeof **listp);
     *list_l = 0;
@@ -46,8 +46,10 @@ void intlist_to_cpuset(const int *list,
     *setp = CPU_ALLOC(max_cpus);
     CPU_ZERO_S(cpus_sz, *setp);
 
-    for (size_t i = 0; i < length; ++i)
-        CPU_SET_S(list[i], cpus_sz, *setp);
+    for (size_t i = 0; i < length; ++i) {
+        if (list[i] < max_cpus)
+            CPU_SET_S(list[i], cpus_sz, *setp);
+    }
 }
 
 int string_to_intlist(const char *str, int **value_in, size_t *length_in) {

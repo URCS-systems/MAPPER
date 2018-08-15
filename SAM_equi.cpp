@@ -1339,7 +1339,7 @@ int main(int argc, char *argv[])
 
         for (int j = range_ends[i]; j < range_ends[i + 1]; ++j) {
           int *mybudget = NULL;
-          int mybudget_l = 0;
+          size_t mybudget_l = 0;
           int *intlist = NULL;
           size_t intlist_l = 0;
           char cg_name[256];
@@ -1379,7 +1379,7 @@ int main(int argc, char *argv[])
               }
 
               apps_sorted[j]->times_allocated++;
-              if (mybudget_l == fair_share)
+              if ((int) mybudget_l == fair_share)
                 apps_sorted[j]->curr_fair_share = mybudget_l;
               printf("\t\tset CPU budget to %s\n", buf);
             }
