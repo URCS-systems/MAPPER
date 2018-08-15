@@ -128,6 +128,8 @@ void *monitor_cpuset_changes(void *arg) {
                 cpu_set_t *tmp1 = CPU_ALLOC(nprocs),
                           *tmp2 = CPU_ALLOC(nprocs);
                 int diff = 0;
+                CPU_ZERO_S(cpus_sz, tmp1);
+                CPU_ZERO_S(cpus_sz, tmp2);
                 CPU_OR_S(cpus_sz, tmp1, jb->cpuset, set);
                 CPU_XOR_S(cpus_sz, tmp2, jb->cpuset, tmp1);
 
