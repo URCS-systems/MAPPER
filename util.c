@@ -1,6 +1,8 @@
 #include "util.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+#include <errno.h>
 
 char *intlist_to_string(const int *list, 
                         size_t length,
@@ -39,15 +41,96 @@ void cpuset_to_intlist(const cpu_set_t *set,
 void intlist_to_cpuset(const int *list,
                        size_t length,
                        cpu_set_t **setp,
-                       int *num_cpus) {
-    if ((*num_cpus = length) == 0)
-        return;
+                       int max_cpus) {
+    const size_t cpus_sz = CPU_ALLOC_SIZE(max_cpus);
+    *setp = CPU_ALLOC(max_cpus);
 
-    const size_t cpus_sz = CPU_ALLOC_SIZE(*num_cpus);
-    *setp = CPU_ALLOC(*num_cpus);
-
-    for (size_t i = 0; i < length; ++i) {
+    for (size_t i = 0; i < length; ++i)
         CPU_SET_S(list[i], cpus_sz, *setp);
+}
+
+int string_to_intlist(const char *str, int **value_in, size_t *length_in) {
+    size_t buflen = 2;
+    size_t length = 0;
+    char *p = NULL;
+    char *token = NULL;
+    const char *delim = NULL;
+    char *buf = strdup(str);
+
+    if (!(*value_in = (int*) realloc(*value_in, buflen * sizeof(**value_in))))
+        goto error;
+
+    /*
+     * Some cgroup parameters are newline-separated lists.
+     * Examples are /sys/fs/cgroup/cpuset/<cg>/tasks
+     * 12994
+     * 13094
+     * 13093
+     * 12234
+     *
+     * Others are comma-separated lists.
+     * Examples are /sys/fs/cgroup/cpuset/<cg>/cpuset.cpus
+     * In addition, parts of these lists may be abbreviated
+     * with hyphens:
+     * 0-3,5-9,13-15
+     *
+     * And some may be space-separated lists.
+     */
+
+    if (strchr(buf, ',') != NULL)
+        delim = ",";
+    else if (strchr(buf, ' ') != NULL)
+        delim = " ";
+    else
+        delim = "\n";
+
+    token = strtok_r(buf, delim, &p);
+    do {
+        if (length >= buflen) {
+            buflen *= 2;
+            if (!(*value_in = (int*) realloc(*value_in, buflen * sizeof(**value_in))))
+                goto error;
+        }
+        int min, max;
+        if (sscanf(token, "%d-%d", &min, &max) == 2) {
+            for (int v=min; v<=max; ++v) {
+                (*value_in)[length++] = v;
+                if (length >= buflen) {
+                    buflen *= 2;
+                    if (!(*value_in = (int*) realloc(*value_in, buflen * sizeof(**value_in))))
+                        goto error;
+                }
+            }
+        } else {
+            errno = 0;
+            long v = strtol(token, NULL, 10);
+            if (errno == 0)
+                (*value_in)[length++] = v;
+        }
+    } while ((token = strtok_r(NULL, delim, &p)));
+
+    free(buf);
+    *value_in = realloc(*value_in, length * sizeof(**value_in));
+    *length_in = length;
+    return 0;
+
+error:
+    free(buf);
+    *value_in = realloc(*value_in, 0);
+    *length_in = 0;
+    return -1;
+}
+
+double timespec_diff(const struct timespec *start, 
+                     const struct timespec *end) {
+    struct timespec diff_ts = *end;
+    if (diff_ts.tv_nsec < start->tv_nsec) {
+        diff_ts.tv_sec = diff_ts.tv_sec - start->tv_sec - 1;
+        diff_ts.tv_nsec = 1000000000 - (start->tv_nsec - diff_ts.tv_nsec);
+    } else {
+        diff_ts.tv_sec -= start->tv_sec;
+        diff_ts.tv_nsec -= start->tv_nsec;
     }
+    return diff_ts.tv_sec + (double) diff_ts.tv_nsec / 1e+9;
 }
 

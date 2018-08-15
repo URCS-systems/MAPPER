@@ -6,6 +6,7 @@
 #define _GNU_SOURCE
 #endif
 #include <sched.h>
+#include <time.h>
 
 #define MAX(a,b)    ((a) > (b) ? (a) : (b))
 
@@ -29,7 +30,13 @@ void cpuset_to_intlist(const cpu_set_t *set,
 void intlist_to_cpuset(const int *list,
                        size_t length,
                        cpu_set_t **setp,
-                       int *num_cpus);
+                       int max_cpus);
+
+int string_to_intlist(const char *str, 
+                      int **value_in, size_t *length_in);
+
+double timespec_diff(const struct timespec *start, 
+                     const struct timespec *end);
 
 #if defined(__cplusplus)
 };

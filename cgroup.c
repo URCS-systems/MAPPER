@@ -168,73 +168,8 @@ int cg_read_intlist(const char *root,
 
     fscanf(fp, "%ms", &buf);
 
-    if (buf) {
-        size_t buflen = 2;
-        size_t length = 0;
-        char *p = NULL;
-        char *token = NULL;
-        const char *delim = NULL;
-
-        if (!(*value_in = (int*) realloc(*value_in, buflen * sizeof(**value_in))))
-            goto error;
-
-        /*
-         * Some cgroup parameters are newline-separated lists.
-         * Examples are /sys/fs/cgroup/cpuset/<cg>/tasks
-         * 12994
-         * 13094
-         * 13093
-         * 12234
-         *
-         * Others are comma-separated lists.
-         * Examples are /sys/fs/cgroup/cpuset/<cg>/cpuset.cpus
-         * In addition, parts of these lists may be abbreviated
-         * with hyphens:
-         * 0-3,5-9,13-15
-         *
-         * And some may be space-separated lists.
-         */
-
-        if (strchr(buf, ',') != NULL)
-            delim = ",";
-        else if (strchr(buf, ' ') != NULL)
-            delim = " ";
-        else
-            delim = "\n";
-
-        token = strtok_r(buf, delim, &p);
-        do {
-            if (length >= buflen) {
-                buflen *= 2;
-                if (!(*value_in = (int*) realloc(*value_in, buflen * sizeof(**value_in))))
-                    goto error;
-            }
-            int min, max;
-            if (sscanf(token, "%d-%d", &min, &max) == 2) {
-                for (int v=min; v<=max; ++v) {
-                    (*value_in)[length++] = v;
-                    if (length >= buflen) {
-                        buflen *= 2;
-                        if (!(*value_in = (int*) realloc(*value_in, buflen * sizeof(**value_in))))
-                            goto error;
-                    }
-                }
-            } else {
-                errno = 0;
-                long v = strtol(token, NULL, 10);
-                if (errno == 0)
-                    (*value_in)[length++] = v;
-            }
-        } while ((token = strtok_r(NULL, delim, &p)));
-
-        *value_in = (int*) realloc(*value_in, length * sizeof(**value_in));
-        *length_in = length;
-    } else {
-error:
+    if (string_to_intlist(buf, value_in, length_in) != 0)
         err = errno;
-        *value_in = (int*) realloc(*value_in, 0);
-        *length_in = 0;
-    }
 
     free(buf);
     if (fclose(fp) < 0)
