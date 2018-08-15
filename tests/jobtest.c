@@ -120,8 +120,8 @@ void *monitor_cpuset_changes(void *arg) {
 
             if (!jb->cpuset) {
                 /* first read */
-                jb->context_changes += CPU_COUNT_S(cpus_sz, set);
-                jb->cpuset_changes++;
+                // jb->context_changes += CPU_COUNT_S(cpus_sz, set);
+                // jb->cpuset_changes++;
                 jb->cpuset = set;
             } else {
                 /* subsequent reads */
@@ -422,10 +422,6 @@ int main(int argc, char *argv[]) {
             total_runtime += parsed_time;
             total_context_changes += jb->context_changes;
             total_cpuset_changes += jb->cpuset_changes;
-            jb->context_changes = 0;
-            jb->cpuset_changes = 0;
-            CPU_FREE(jb->cpuset);
-            jb->cpuset = NULL;
 
             jb->successful_runs++;
         } else {
@@ -433,6 +429,11 @@ int main(int argc, char *argv[]) {
             jb->failed_runs++;
         }
         jb->total_runs++;
+
+        jb->context_changes = 0;
+        jb->cpuset_changes = 0;
+        CPU_FREE(jb->cpuset);
+        jb->cpuset = NULL;
 
         /* run the job again */
         if (jb->failed_runs >= MAX_FAILED)
