@@ -60,6 +60,9 @@ double total_runtime = 0;
 int total_context_changes = 0;
 int total_cpuset_changes = 0;
 
+const char *warn_color = "\033[38;5;192";
+const char *reset = "\033[0m";
+
 void handle_quit(int sig) {
     if (!wants_to_quit) {
         wants_to_quit = true;
@@ -192,23 +195,25 @@ static pid_t run_job(struct job *jb) {
             lm.rlim_cur = lm.rlim_max;
 
             if (setrlimit(RLIMIT_NOFILE, &lm) == -1)
-                fprintf(stderr, "WARNING: failed to set file limit for %s to %lu: %m\n", jb->name, lm.rlim_cur);
+                fprintf(stderr, "%sWARNING: failed to set file limit for %s to %lu: %m%s\n", 
+                        warn_color, jb->name, lm.rlim_cur, reset);
         }
 
         printf("[PID %6d] running %s ...\n", mypid, jb->argbuf);
 
         if ((log_fd = open(jb->outfile, O_CREAT | O_RDWR, 0644)) != -1) {
             if (dup2(log_fd, STDOUT_FILENO) == -1)
-                fprintf(stderr, "[PID %6d] failed to associate stdout with %s: %m\n", 
-                        mypid, jb->outfile);
+                fprintf(stderr, "%s[PID %6d] failed to associate stdout with %s: %m%s\n", 
+                        warn_color, mypid, jb->outfile, reset);
             if (dup2(log_fd, STDERR_FILENO) == -1)
-                fprintf(stderr, "[PID %6d] failed to associate stderr with %s: %m\n",
-                        mypid, jb->outfile);
+                fprintf(stderr, "%s[PID %6d] failed to associate stderr with %s: %m%s\n",
+                        warn_color, mypid, jb->outfile, reset);
         } else
-            fprintf(stderr, "[PID %6d] failed to open log file %s: %m\n", mypid, jb->outfile);
+            fprintf(stderr, "%s[PID %6d] failed to open log file %s: %m%s\n", 
+                    warn_color, mypid, jb->outfile, reset);
 
         if (execvp(jb->argv[0], jb->argv) < 0) {
-            fprintf(stderr, "failed to run %s: %m\n", jb->argbuf);
+            fprintf(stderr, "%sfailed to run %s: %m%s\n", warn_color, jb->argbuf, reset);
             exit(EXIT_FAILURE);
         }
     }
@@ -236,12 +241,14 @@ static int parse_result(const struct job *jb, double *res)
         snprintf(cmdbuf, sizeof cmdbuf, "cat %s | %s", jb->outfile, jb->filter_cmd);
         
         if (!(pf = popen(cmdbuf, "r"))) {
-            fprintf(stderr, "WARNING: could not run filter '%s' for %s: %m\n", cmdbuf, jb->name);
+            fprintf(stderr, "%sWARNING: could not run filter '%s' for %s: %m%s\n", 
+                    warn_color, cmdbuf, jb->name, reset);
             return -1;
         }
     } else {
         if (!(pf = fopen(jb->outfile, "r"))) {
-            fprintf(stderr, "WARNING: could not open log file '%s' for %s: %m\n", jb->outfile, jb->name);
+            fprintf(stderr, "%sWARNING: could not open log file '%s' for %s: %m%s\n", 
+                    warn_color, jb->outfile, jb->name, reset);
             return -1;
         }
     }
@@ -249,16 +256,18 @@ static int parse_result(const struct job *jb, double *res)
     /* we expect the result on a single line */
     if (getline(&line, &sz, pf) == -1) {
         ret = -1;
-        fprintf(stderr, "WARNING: could not read line from output of %s: %m\n", jb->name);
+        fprintf(stderr, "%sWARNING: could not read line from output of %s: %m%s\n", 
+                warn_color, jb->name, reset);
     } else if (sscanf(line, "%lf", res) != 1) {
         ret = -1;
         if (errno != 0)
-            fprintf(stderr, "WARNING: could not parse result for %s: %m\n", jb->name);
+            fprintf(stderr, "%sWARNING: could not parse result for %s: %m%s\n", 
+                    warn_color, jb->name, reset);
         else {
             char *nl_ptr = strchr(line, '\n');
             if (nl_ptr) *nl_ptr = '\0';
-            fprintf(stderr, "WARNING: could not parse result for %s: expected double, got '%s%s'\n", jb->name, line,
-                    isatty(fileno(stderr)) ? "\x1B[0m" : "");
+            fprintf(stderr, "%sWARNING: could not parse result for %s: expected double, got '%s%s%s'%s\n", 
+                    warn_color, jb->name, line, reset, warn_color, reset);
         }
     }
 
@@ -289,6 +298,12 @@ int main(int argc, char *argv[]) {
 
     /* get system info */
     nprocs = get_nprocs();
+
+    /* setup colors */
+    if (!isatty(fileno(stdout))) {
+        warn_color = "";
+        reset = "";
+    }
 
     /* read jobs */
     char *line = NULL;
@@ -425,7 +440,8 @@ int main(int argc, char *argv[]) {
 
             jb->successful_runs++;
         } else {
-            fprintf(stderr, "WARNING: Ignoring result for %s since it failed\n", jb->name);
+            fprintf(stderr, "%sWARNING: Ignoring result for %s since it failed%s\n", 
+                    warn_color, jb->name, reset);
             jb->failed_runs++;
         }
         jb->total_runs++;
@@ -437,8 +453,8 @@ int main(int argc, char *argv[]) {
 
         /* run the job again */
         if (jb->failed_runs >= MAX_FAILED)
-            fprintf(stderr, "WARNING: %s has failed too many times (%d).\n", jb->name,
-                    jb->failed_runs);
+            fprintf(stderr, "%sWARNING: %s has failed too many times (%d).%s\n", 
+                    warn_color, jb->name, jb->failed_runs, reset);
         else if (run_job(jb) != (pid_t) -1)
             clock_gettime(CLOCK_MONOTONIC_RAW, &jb->start);
 
@@ -449,7 +465,7 @@ int main(int argc, char *argv[]) {
     wants_to_quit = true;
 
     if (pthread_join(monitor_thread, NULL) != 0)
-        perror("WARNING: pthread_join() on monitor_thread");
+        fprintf(stderr, "%sWARNING: pthread_join() on monitor_thread: %m%s", warn_color, reset);
 
     printf("Summary:\n");
     for (struct job *jb = job_list; jb; jb = jb->next) {
