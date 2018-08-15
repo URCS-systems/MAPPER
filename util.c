@@ -44,6 +44,7 @@ void intlist_to_cpuset(const int *list,
                        int max_cpus) {
     const size_t cpus_sz = CPU_ALLOC_SIZE(max_cpus);
     *setp = CPU_ALLOC(max_cpus);
+    CPU_ZERO_S(cpus_sz, *setp);
 
     for (size_t i = 0; i < length; ++i)
         CPU_SET_S(list[i], cpus_sz, *setp);
