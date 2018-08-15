@@ -100,7 +100,7 @@ void *monitor_cpuset_changes(void *arg) {
             }
 
             fscanf(pf, "%ms", &buf);
-            if (string_to_intlist(buf, &intlist, &intlist_l) != 0) {
+            if (buf && string_to_intlist(buf, &intlist, &intlist_l) != 0) {
                 if (errno == 0)
                     fprintf(stderr, "WARNING: %10s: expected intlist, found '%s'\n", jb->name, buf);
                 else
