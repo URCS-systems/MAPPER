@@ -309,6 +309,9 @@ int main(int argc, char *argv[]) {
     char *line = NULL;
     size_t sz = 0;
     int lineno = 1;
+    char home_dir[512];
+
+    snprintf(home_dir, sizeof home_dir - 1, "%s", getenv("HOME"));
 
     for (num_jobs = 0; getline(&line, &sz, input) >= 0; ++lineno) {
         char *nlptr = strchr(line, '\n');
@@ -349,7 +352,7 @@ int main(int argc, char *argv[]) {
             *pipe_ptr = '\0';
         }
 
-        jb->argbuf = strdup(sp_ptr + 1);
+        // jb->argbuf = strdup(sp_ptr + 1);
         strncpy(jb->name, line, MIN((long)(sizeof jb->name - 1), sp_ptr - line));
         token = sp_ptr + 1;
 
@@ -361,7 +364,29 @@ int main(int argc, char *argv[]) {
             if (strcmp(token, "|") == 0)
                 break;
 
-            jb->argv[jb->argc++] = strdup(token);
+            /* replace '~' with $HOME */
+            char *str = NULL;
+            char *new_argbuf = NULL;
+            char *tilde_ptr = NULL;
+            if ((tilde_ptr = strchr(token, '~')) && home_dir[0]) {
+                size_t sz = strlen(home_dir) + strlen(token) + 1;   /* excluding '~' for token */
+                *tilde_ptr = '\0';
+                str = malloc(sz);
+                snprintf(str, sz - 1, "%s%s%s", token, home_dir, tilde_ptr + 1);
+            } else {
+                if (tilde_ptr && !home_dir[0]) {
+                    fprintf(stderr, "%sWARNING: HOME is undefined but needed for %s%s\n",
+                            warn_color, jb->name, reset);
+                }
+                str = strdup(token);
+            }
+            jb->argv[jb->argc++] = str;
+            if (jb->argbuf)
+                asprintf(&new_argbuf, "%s %s", jb->argbuf, str);
+            else
+                asprintf(&new_argbuf, "%s", str);
+            free(jb->argbuf);
+            jb->argbuf = new_argbuf;
         }
         jb->argv[jb->argc++] = NULL;
 
