@@ -556,17 +556,20 @@ int test_joblist(const char *filename, FILE *input, FILE *csv, bool write_header
     printf("Total changes: %10d, Total cpuset changes: %10d, Total job time: %10lf, Test duration: %10lf\n",
             total_context_changes, total_cpuset_changes, total_runtime, duration);
 
+    struct job *last = job_list;
     if (write_header) {
-        for (struct job *jb = job_list; jb; jb = jb->next)
+        while (last->next)
+            last = last->next;
+        for (struct job *jb = last; jb; jb = jb->prev)
             fprintf(csv, "%s,", jb->name);
-        for (struct job *jb = job_list; jb; jb = jb->next)
+        for (struct job *jb = job_list; jb; jb = jb->prev)
             fprintf(csv, "%1$s-C/s,%1$s-N/s,", jb->name);
         fprintf(csv, "C,N,runtime,duration\n");
     }
 
-    for (struct job *jb = job_list; jb; jb = jb->next)
+    for (struct job *jb = last; jb; jb = jb->prev)
         fprintf(csv, "%lf,", jb->avg_time2 ? jb->avg_time2 : jb->avg_time);
-    for (struct job *jb = job_list; jb; jb = jb->next)
+    for (struct job *jb = last; jb; jb = jb->prev)
         fprintf(csv, "%lf,%lf,", jb->avg_ctx_changes_per_second, jb->avg_cpuset_changes_per_second);
 
     fprintf(csv, "%lf,%lf,%lf,%lf", (double) total_context_changes, (double) total_cpuset_changes, total_runtime, duration);
