@@ -60,7 +60,7 @@ double total_runtime = 0;
 int total_context_changes = 0;
 int total_cpuset_changes = 0;
 
-const char *warn_color = "\033[38;5;192";
+const char *warn_color = "\033[38;5;196m";
 const char *reset = "\033[0m";
 
 void handle_quit(int sig) {
@@ -229,17 +229,17 @@ static pid_t run_job(struct job *jb) {
 
         if ((log_fd = open(jb->outfile, O_CREAT | O_RDWR, 0644)) != -1) {
             if (dup2(log_fd, STDOUT_FILENO) == -1)
-                fprintf(stderr, "%s[PID %6d] failed to associate stdout with %s: %m%s\n", 
-                        warn_color, mypid, jb->outfile, reset);
+                fprintf(stderr, "s[PID %6d] failed to associate stdout with %s: %m\n", 
+                        mypid, jb->outfile);
             if (dup2(log_fd, STDERR_FILENO) == -1)
-                fprintf(stderr, "%s[PID %6d] failed to associate stderr with %s: %m%s\n",
-                        warn_color, mypid, jb->outfile, reset);
+                fprintf(stderr, "[PID %6d] failed to associate stderr with %s: %m\n",
+                        mypid, jb->outfile);
         } else
-            fprintf(stderr, "%s[PID %6d] failed to open log file %s: %m%s\n", 
-                    warn_color, mypid, jb->outfile, reset);
+            fprintf(stderr, "[PID %6d] failed to open log file %s: %m\n", 
+                    mypid, jb->outfile);
 
         if (execvp(jb->argv[0], jb->argv) < 0) {
-            fprintf(stderr, "%sfailed to run %s: %m%s\n", warn_color, jb->argbuf, reset);
+            fprintf(stderr, "failed to run %s: %m\n", jb->argbuf);
             exit(EXIT_FAILURE);
         }
     }
