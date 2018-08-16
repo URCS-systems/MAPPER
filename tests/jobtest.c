@@ -593,7 +593,7 @@ void usage(const char *prog) {
 int main(int argc, char *argv[]) {
     int num_joblists = 0;
     char *jls[MAX_JOBLIST];
-    int ntimes;
+    int ntimes = 1;
 
     if (argc < 2) {
         usage(argv[0]);
@@ -627,7 +627,7 @@ int main(int argc, char *argv[]) {
         FILE *input = NULL;
         char *log_name = strdup(jls[i]);
         const char *log_base = NULL;
-        if (strcmp(argv[1], "-") == 0)
+        if (strcmp(jls[i], "-") == 0)
             input = stdin;
         else {
             if (!(input = fopen(jls[i], "r"))) {
