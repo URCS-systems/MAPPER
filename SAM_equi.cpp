@@ -36,7 +36,7 @@
 // SAM
 #define MAX_COUNTERS 50
 #define SHAR_MEM_THRESH 100000000
-#define SHAR_COHERENCE_THRESH 550000
+#define SHAR_COHERENCE_THRESH 450000
 #define SHAR_HCOH_THRESH 1100000
 #define SHAR_REMOTE_THRESH 2700000
 #define SHAR_IPC_THRESH 700
@@ -46,6 +46,7 @@
 #define SAM_PERF_STEP 4 /* in number of CPUs */
 #define SAM_DISTURB_PROB 0.3 /* probability of a disturbance */
 #define SAM_INITIAL_ALLOCS 4 /* number of initial allocations before exploring */
+#define SAM_MIN_THREADS 4
 
 #define PRINT_BOTTLENECK false
 #define HILL_CLIMBING false
@@ -838,8 +839,12 @@ int main(int argc, char *argv[])
       if (an->times_allocated > 0)
         an->extra_metric[EXTRA_METRIC_IpCOREpS] =
           an->value[1] / CPU_COUNT_S(CPU_ALLOC_SIZE(cpuinfo->total_cpus), an->cpuset[0]);
-
-      if (!(an->ts.tv_sec == 0 && an->ts.tv_nsec == 0)) {
+   
+      printf("[APP %6d] Bottlenecks: ",an->pid);
+			for (int i = 0; i < N_METRICS; ++i) 
+				printf(" %lu", an->bottleneck[i]);
+			printf("\n");
+			if (!(an->ts.tv_sec == 0 && an->ts.tv_nsec == 0)) {
         struct timespec diff_ts;
         clock_gettime(CLOCK_MONOTONIC_RAW, &diff_ts);
 
@@ -913,7 +918,7 @@ int main(int argc, char *argv[])
         for (int j = 0; j < num_apps; ++j) {
           if (apps_unsorted[j] 
 #if !(FAIR || HILL_CLIMBING)
-                  && (i >= num_counter_orders || apps_unsorted[j]->bottleneck[counter_order[i]] > 0)) {
+                  && (i >= num_counter_orders || apps_unsorted[j]->bottleneck[counter_order[i]] > SAM_MIN_THREADS)) {
 #else
                   && counter_order[i] == METRIC_AVGIPC) {
 #endif
@@ -1093,6 +1098,8 @@ int main(int argc, char *argv[])
                 else
                   per_app_cpu_budget[j] = MAX(per_app_cpu_budget[j] - 
 										determine_step_size(counter_order[i], curr_alloc_len, -1), SAM_MIN_CONTEXTS);
+								if (prev_alloc_len == 0 && per_app_cpu_budget[j] == cpuinfo->total_cpus)
+									apps_sorted[j]->exploring = false;
               } else {
                 if (curr_perf < prev_perf && (prev_perf - curr_perf) / (double)prev_perf >= SAM_PERF_THRESH &&
 										(prev_alloc_len != curr_alloc_len)) {
