@@ -64,8 +64,8 @@ enum metric counter_order[MAX_COUNTERS];
 int ordernum = 0;
 int init_thresholds = 0;
 
-struct timeval start_time,finish_time;
-struct timeval perf_start, perf_finish;
+struct timespec start_time,finish_time;
+struct timespec perf_start, perf_finish;
 
 struct counter {
   double ratio;
@@ -700,15 +700,14 @@ int main(int argc, char *argv[])
     goto END;
 
   while (!stoprun) {
-   
- //start time for this iteration
- gettimeofday(&start_time, NULL);
-
     pid_t pids_to_monitor[8192];
     int pids_to_monitor_l = 0;
 
     cpu_set_t *remaining_cpus;
     size_t rem_cpus_sz;
+
+    /* get iteration start time */
+    clock_gettime(CLOCK_MONOTONIC_RAW, &start_time);
 
     /* check for new applications / threads */
     {
@@ -748,13 +747,9 @@ int main(int argc, char *argv[])
       // printf("%d\n", pd->pid);
     }
 
-     gettimeofday(&perf_start, NULL);
-    // Comment added by Sayak Chakraborti:
-    count_event_perfMultiplex(pids_to_monitor,
-    		    pids_to_monitor_l); // Comment added by Sayak Chakraborti, call this function to
-     gettimeofday(&perf_finish, NULL);
-     printf("Elapsed time for perf setup/start/stop/read: %.7f seconds\n",(((perf_finish.tv_sec*1000000.0)+perf_finish.tv_usec)-((perf_start.tv_sec*1000000.0)+perf_start.tv_usec))/1000000.0);
-
+    clock_gettime(CLOCK_MONOTONIC_RAW, &perf_start);
+    count_event_perfMultiplex(pids_to_monitor, pids_to_monitor_l); 
+    clock_gettime(CLOCK_MONOTONIC_RAW, &perf_finish); 
 
     // count for all tids for a particular interval of time
     displayTIDEvents(pids_to_monitor, pids_to_monitor_l); // required to copy values to my data structures
@@ -1405,14 +1400,19 @@ final_stage_failed:
 
     /* reset app metrics and values */
     for (struct appinfo *an = apps_list; an; an = an->next) {
-      memset(an->metric, 0, sizeof an->metric);
-      memset(an->extra_metric, 0, sizeof an->extra_metric);
-      memset(an->bottleneck, 0, sizeof an->bottleneck);
-      memset(an->value, 0, sizeof an->value);
+        memset(an->metric, 0, sizeof an->metric);
+        memset(an->extra_metric, 0, sizeof an->extra_metric);
+        memset(an->bottleneck, 0, sizeof an->bottleneck);
+        memset(an->value, 0, sizeof an->value);
     }
-      gettimeofday(&finish_time, NULL);
-      
-      printf("Elapsed time for this iteration: %.7f seconds\n",(((finish_time.tv_sec*1000000.0)+finish_time.tv_usec)-((start_time.tv_sec*1000000.0)+start_time.tv_usec))/1000000.0);
+
+    /* get iteration finish time */
+    clock_gettime(CLOCK_MONOTONIC_RAW, &finish_time);
+
+    printf("Elapsed time perf setup/start/stop/read: %.7f s, "
+            "total: %.7f s\n",
+            timespec_diff(&perf_start, &perf_finish),
+            timespec_diff(&start_time, &finish_time));
   }
 
   printf("Stopping...\n");
