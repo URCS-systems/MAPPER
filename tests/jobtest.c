@@ -21,6 +21,7 @@
 #define ARG_MAX     20
 #define MAX_FAILED  20
 #define SUMMARY_LEN 140 /* in columns */
+#define MAX_JOBLIST 100
 
 struct job {
     char name[40];
@@ -53,6 +54,7 @@ unsigned test_length = 60 * 4;   /* in seconds */
 struct timespec start, end;
 
 bool wants_to_quit;
+bool stop_thread;
 
 pthread_t monitor_thread;
 
@@ -81,8 +83,8 @@ void handle_quit(int sig) {
 
 void *monitor_cpuset_changes(void *arg) {
     /* read procfs every second and compare change in cpusets */
-    while (!wants_to_quit) {
-        for (struct job *jb = job_list; jb; jb = jb->next) {
+    while (!wants_to_quit && !stop_thread) {
+        for (struct job *jb = job_list; jb && !wants_to_quit && !stop_thread; jb = jb->next) {
             char cmd[1024];
             char *buf;
             FILE *pf;
@@ -107,7 +109,6 @@ void *monitor_cpuset_changes(void *arg) {
             }
 
             fscanf(pf, "%ms", &buf);
-            printf("buf = %s\n", buf);
             if (!buf || string_to_intlist(buf, &intlist, &intlist_l) != 0) {
                 if (errno == 0)
                     fprintf(stderr, "%sWARNING: %10s: expected intlist, found '%s%s%s'%s\n", 
@@ -307,37 +308,13 @@ static int parse_result(const struct job *jb, double *res)
     return ret;
 }
 
-int main(int argc, char *argv[]) {
-    FILE *input = NULL;
-
-    if (argc < 2) {
-        fprintf(stderr, "usage: %s joblist\n", argv[0]);
-        return 1;
-    }
-
-    if (strcmp(argv[1], "-") == 0)
-        input = stdin;
-    else {
-        if (!(input = fopen(argv[1], "r"))) {
-            fprintf(stderr, "Could not open %s: %m\n", argv[1]);
-            return 1;
-        }
-    }
-
-    /* get system info */
-    nprocs = get_nprocs();
-
-    /* setup colors */
-    if (!isatty(fileno(stdout))) {
-        warn_color = "";
-        reset = "";
-    }
-
+int test_joblist(const char *filename, FILE *input, FILE *csv, bool write_header) {
     /* read jobs */
     char *line = NULL;
     size_t sz = 0;
     int lineno = 1;
     char home_dir[512];
+    bool ended = false;
 
     snprintf(home_dir, sizeof home_dir - 1, "%s", getenv("HOME"));
 
@@ -364,7 +341,7 @@ int main(int argc, char *argv[]) {
 
         if (!(sp_ptr = strchr(line, ' '))) {
             fprintf(stderr, "%s:%d: expected \"<jobname> <args>\"\n",
-                    argv[1], lineno);
+                    filename, lineno);
             continue;
         }
 
@@ -427,8 +404,6 @@ int main(int argc, char *argv[]) {
 
     free(line);
 
-    fclose(input);
-
     signal(SIGTERM, &handle_quit);
     signal(SIGQUIT, &handle_quit);
     signal(SIGINT, &handle_quit);
@@ -466,9 +441,12 @@ int main(int argc, char *argv[]) {
 
         clock_gettime(CLOCK_MONOTONIC_RAW, &jb->end);
 
-        if (elapsed > test_length || wants_to_quit)
+        if (elapsed > test_length || wants_to_quit) {
             /* don't count this test result */
+            if (!ended)
+                clock_gettime(CLOCK_MONOTONIC_RAW, &end);
             continue;
+        }
 
         pthread_mutex_lock(&jb->mtx);
         if (WIFEXITED(wstatus) && WEXITSTATUS(wstatus) == 0) {
@@ -514,11 +492,12 @@ int main(int argc, char *argv[]) {
         pthread_mutex_unlock(&jb->mtx);
     }
 
-    clock_gettime(CLOCK_MONOTONIC_RAW, &end);
-    wants_to_quit = true;
+    stop_thread = true;
 
     if (pthread_join(monitor_thread, NULL) != 0)
         fprintf(stderr, "%sWARNING: pthread_join() on monitor_thread: %m%s", warn_color, reset);
+
+    stop_thread = false;
 
     printf("Summary:\n");
     for (struct job *jb = job_list; jb; jb = jb->next) {
@@ -540,15 +519,116 @@ int main(int argc, char *argv[]) {
             str = "r";
             rem -= 1;
         }
-        printf("%*lf s, %*lf cpuset changes/s, %*lf changes/s (%2d%.1s)\n", 
+        printf("%*lf s, %*lf changes/s, %*lf cpuset changes/s (%2d%.1s)\n", 
                 rem / 3 + rem % 3, val, 
-                rem / 3, jb->avg_cpuset_changes_per_second,
                 rem / 3, jb->avg_ctx_changes_per_second,
+                rem / 3, jb->avg_cpuset_changes_per_second,
                 jb->successful_runs, str);
     }
 
-    printf("Test duration: %10lf, Total changes: %10d, Total cpuset changes: %10d, Total job time: %10lf\n",
-            timespec_diff(&start, &end), total_context_changes, total_cpuset_changes, total_runtime);
+    double duration = timespec_diff(&start, &end);
+
+    printf("Total changes: %10d, Total cpuset changes: %10d, Total job time: %10lf, Test duration: %10lf\n",
+            total_context_changes, total_cpuset_changes, total_runtime, duration);
+
+    if (write_header) {
+        for (struct job *jb = job_list; jb; jb = jb->next)
+            fprintf(csv, "%s,", jb->name);
+        for (struct job *jb = job_list; jb; jb = jb->next)
+            fprintf(csv, "%1$s-C/s,%1$s-N/s", jb->name);
+        fprintf(csv, "C,N,runtime,duration");
+    }
+
+    for (struct job *jb = job_list; jb; jb = jb->next)
+        fprintf(csv, "%lf,", jb->avg_time2 ? jb->avg_time2 : jb->avg_time);
+    for (struct job *jb = job_list; jb; jb = jb->next)
+        fprintf(csv, "%lf,%lf,", jb->avg_ctx_changes_per_second, jb->avg_cpuset_changes_per_second);
+
+    fprintf(csv, "%lf,%lf,%lf,%lf", (double) total_context_changes, (double) total_cpuset_changes, total_runtime, duration);
+
+    for (struct job *jb = job_list; jb; ) {
+        struct job *next = jb->next;
+        pthread_mutex_destroy(&jb->mtx);
+        free(jb);
+        jb = next;
+    }
+
+    job_list = NULL;
+
+    return 0;
+}
+
+void usage(const char *prog) {
+    fprintf(stderr, "usage: %s [-n NTIMES] -f FILE ... [FILE...]\n", prog);
+}
+
+int main(int argc, char *argv[]) {
+    int num_joblists = 0;
+    char *jls[MAX_JOBLIST];
+    int ntimes;
+
+    if (argc < 2) {
+        usage(argv[0]);
+        return 1;
+    }
+
+    /* get system info */
+    nprocs = get_nprocs();
+
+    /* setup colors */
+    if (!isatty(fileno(stdout))) {
+        warn_color = "";
+        reset = "";
+    }
+
+    for (int i = 1; i < argc && num_joblists < MAX_JOBLIST;i++) {
+        if (strcmp(argv[i], "-n") == 0) {
+            ntimes = atoi(argv[++i]);
+        } else if (strcmp(argv[i], "-f") == 0) {
+            jls[num_joblists++] = argv[++i];
+        } else
+            fprintf(stderr, "invalid argument '%s'\n", argv[i]);
+    }
+
+    if (num_joblists < 1) {
+        usage(argv[0]);
+        return 1;
+    }
+
+    for (int i = 0; i < num_joblists && !wants_to_quit; ++i) {
+        FILE *input = NULL;
+        char *log_name = strdup(jls[i]);
+        const char *log_base = NULL;
+        if (strcmp(argv[1], "-") == 0)
+            input = stdin;
+        else {
+            if (!(input = fopen(jls[i], "r"))) {
+                fprintf(stderr, "Could not open %s: %m\n", jls[i]);
+                return 1;
+            }
+        }
+
+        log_base = basename(log_name);
+            
+        for (int j = 0; j < ntimes && !wants_to_quit; ++j) {
+            FILE *log = NULL;
+            char *log_name2 = NULL;
+            asprintf(&log_name2, "%s-%d.csv", log_base, j+1);
+
+            if (!(log = fopen(log_name2, "w"))) {
+                fprintf(stderr, "failed to open `%s':%m\n", log_name2);
+                return 1;
+            }
+            if (test_joblist(jls[i], input, log, j == 0) != 0)
+                return 1;
+            free(log_name2);
+            fclose(log);
+            rewind(input);
+        }
+        if (input != stdin)
+            fclose(input);
+        free(log_name);
+    }
 
     return 0;
 }
