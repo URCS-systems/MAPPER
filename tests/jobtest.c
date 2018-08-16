@@ -560,7 +560,7 @@ int test_joblist(const char *filename, FILE *input, FILE *csv, bool write_header
         for (struct job *jb = job_list; jb; jb = jb->next)
             fprintf(csv, "%s,", jb->name);
         for (struct job *jb = job_list; jb; jb = jb->next)
-            fprintf(csv, "%1$s-C/s,%1$s-N/s", jb->name);
+            fprintf(csv, "%1$s-C/s,%1$s-N/s,", jb->name);
         fprintf(csv, "C,N,runtime,duration\n");
     }
 
