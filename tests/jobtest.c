@@ -59,10 +59,6 @@ bool killing_jobs;
 
 pthread_t monitor_thread;
 
-double total_runtime = 0;
-int total_context_changes = 0;
-int total_cpuset_changes = 0;
-
 const char *warn_color = "\033[38;5;196m";
 const char *reset = "\033[0m";
 
@@ -340,6 +336,10 @@ int test_joblist(const char *filename, FILE *input, FILE *csv, bool write_header
     int lineno = 1;
     char home_dir[512];
     bool ended = false;
+    double total_runtime = 0;
+    int total_context_changes = 0;
+    int total_cpuset_changes = 0;
+
 
     snprintf(home_dir, sizeof home_dir - 1, "%s", getenv("HOME"));
 
