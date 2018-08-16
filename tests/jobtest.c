@@ -568,7 +568,7 @@ int test_joblist(const char *filename, FILE *input, FILE *csv, bool write_header
     for (struct job *jb = last; jb; jb = jb->prev)
         fprintf(csv, "%lf,%lf,", jb->avg_cpuset_changes_per_second, jb->avg_ctx_changes_per_second);
 
-    fprintf(csv, "%lf,%lf,%lf,%lf", (double) total_cpuset_changes, (double) total_context_changes, total_runtime, duration);
+    fprintf(csv, "%lf,%lf,%lf,%lf\n", (double) total_cpuset_changes, (double) total_context_changes, total_runtime, duration);
 
     for (struct job *jb = job_list; jb; ) {
         struct job *next = jb->next;
