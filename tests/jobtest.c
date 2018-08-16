@@ -539,10 +539,10 @@ int test_joblist(const char *filename, FILE *input, FILE *csv, bool write_header
             str = "r";
             rem -= 1;
         }
-        printf("%*lf s, %*lf changes/s, %*lf cpuset changes/s (%2d%.1s)\n", 
+        printf("%*lf s, %*lf cpuset changes/s, %*lf changes/s (%2d%.1s)\n", 
                 rem / 3 + rem % 3, val, 
-                rem / 3, jb->avg_ctx_changes_per_second,
                 rem / 3, jb->avg_cpuset_changes_per_second,
+                rem / 3, jb->avg_ctx_changes_per_second,
                 jb->successful_runs, str);
     }
 
@@ -558,16 +558,16 @@ int test_joblist(const char *filename, FILE *input, FILE *csv, bool write_header
         for (struct job *jb = last; jb; jb = jb->prev)
             fprintf(csv, "%s,", jb->name);
         for (struct job *jb = job_list; jb; jb = jb->prev)
-            fprintf(csv, "%1$s-C/s,%1$s-N/s,", jb->name);
-        fprintf(csv, "C,N,runtime,duration\n");
+            fprintf(csv, "%1$s-N/s,%1$s-C/s,", jb->name);
+        fprintf(csv, "N,C,runtime,duration\n");
     }
 
     for (struct job *jb = last; jb; jb = jb->prev)
         fprintf(csv, "%lf,", jb->avg_time2 ? jb->avg_time2 : jb->avg_time);
     for (struct job *jb = last; jb; jb = jb->prev)
-        fprintf(csv, "%lf,%lf,", jb->avg_ctx_changes_per_second, jb->avg_cpuset_changes_per_second);
+        fprintf(csv, "%lf,%lf,", jb->avg_cpuset_changes_per_second, jb->avg_ctx_changes_per_second);
 
-    fprintf(csv, "%lf,%lf,%lf,%lf", (double) total_context_changes, (double) total_cpuset_changes, total_runtime, duration);
+    fprintf(csv, "%lf,%lf,%lf,%lf", (double) total_cpuset_changes, (double) total_context_changes, total_runtime, duration);
 
     for (struct job *jb = job_list; jb; ) {
         struct job *next = jb->next;
