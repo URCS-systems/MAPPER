@@ -55,6 +55,7 @@ struct timespec start, end;
 
 bool wants_to_quit;
 bool stop_thread;
+bool killing_jobs;
 
 pthread_t monitor_thread;
 
@@ -65,19 +66,31 @@ int total_cpuset_changes = 0;
 const char *warn_color = "\033[38;5;196m";
 const char *reset = "\033[0m";
 
-void handle_quit(int sig) {
-    if (!wants_to_quit) {
-        wants_to_quit = true;
-        printf("Received signal: %s\n", strsignal(sig));
-        for (struct job *jb = job_list; jb; jb = jb->next) {
-            if (jb->pid > 0)
-                kill(-jb->pid, SIGTERM);
+void kill_jobs(void) {
+    int amt_killed = 0;
+    for (struct job *jb = job_list; jb; jb = jb->next) {
+        if (jb->pid > 0) {
+            kill(-jb->pid, SIGTERM);
+            amt_killed++;
         }
+    }
+    if (amt_killed > 0)
         sleep(2);
-        for (struct job *jb = job_list; jb; jb = jb->next) {
-            if (jb->pid > 0)
-                kill(-jb->pid, SIGKILL);
-        }
+    for (struct job *jb = job_list; jb; jb = jb->next) {
+        if (jb->pid > 0)
+            kill(-jb->pid, SIGKILL);
+    }
+}
+
+
+void handle_quit(int sig) {
+    printf("Received signal: %s\n", strsignal(sig));
+    if (sig != SIGALRM)
+        wants_to_quit = true;
+    if (!killing_jobs) {
+        killing_jobs = true;
+        kill_jobs();
+        killing_jobs = false;
     }
 }
 
