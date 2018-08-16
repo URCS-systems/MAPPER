@@ -140,13 +140,19 @@ void *monitor_cpuset_changes(void *arg) {
                 continue;
             }
 
+            /*
             printf("[PID %6d] before:", jb->pid);
             for (size_t k = 0; k < intlist_l; ++k) {
                 printf("%d,", intlist[k]);
             }
             printf("\n");
+            */
 
             intlist_to_cpuset(intlist, intlist_l, &set, nprocs);
+            free(intlist);
+            intlist = NULL;
+            intlist_l = 0;
+            /*
             cpuset_to_intlist(set, nprocs, &intlist, &intlist_l);
 
             printf("[PID %6d] after:", jb->pid);
@@ -154,6 +160,7 @@ void *monitor_cpuset_changes(void *arg) {
                 printf("%d,", intlist[k]);
             }
             printf("\n");
+            */
 
             if (!jb->cpuset) {
                 /* first read */
@@ -170,6 +177,7 @@ void *monitor_cpuset_changes(void *arg) {
                 CPU_AND_S(cpus_sz, tmp1, jb->cpuset, set);
                 CPU_XOR_S(cpus_sz, tmp2, set, tmp1);
 
+                /*
                 cpuset_to_intlist(jb->cpuset, nprocs, &intlist, &intlist_l);
 
                 printf("[PID %6d] old cpuset:", jb->pid);
@@ -177,6 +185,10 @@ void *monitor_cpuset_changes(void *arg) {
                     printf("%d,", intlist[k]);
                 }
                 printf("\n");
+                free(intlist);
+                intlist = NULL;
+                intlist_l = 0;
+                */
 
                 if ((diff = CPU_COUNT_S(cpus_sz, tmp2)) > 0) {
                     jb->context_changes += diff;
