@@ -101,7 +101,7 @@ void *monitor_cpuset_changes(void *arg) {
                         "cat /proc/%d/status | grep Cpus_allowed_list | awk '{print $2}'", jb->pid);
 
             if (!(pf = popen(cmd, "r"))) {
-                fprintf(stderr, "WARNING: %10s: failed to read /proc/%d/status: %m\n", jb->name, jb->pid);
+                fprintf(stderr, "%sWARNING: %10s: failed to read /proc/%d/status: %m%s\n", warn_color, jb->name, jb->pid, reset);
                 pthread_mutex_unlock(&jb->mtx);
                 continue;
             }
@@ -110,9 +110,11 @@ void *monitor_cpuset_changes(void *arg) {
             printf("buf = %s\n", buf);
             if (!buf || string_to_intlist(buf, &intlist, &intlist_l) != 0) {
                 if (errno == 0)
-                    fprintf(stderr, "WARNING: %10s: expected intlist, found '%s'\n", jb->name, buf);
+                    fprintf(stderr, "%sWARNING: %10s: expected intlist, found '%s%s%s'%s\n", 
+                            warn_color, jb->name, buf, reset, warn_color, reset);
                 else
-                    fprintf(stderr, "WARNING: %10s: could not read intlist: %m\n", jb->name);
+                    fprintf(stderr, "%sWARNING: %10s: could not read intlist: %m%s\n", 
+                            warn_color, jb->name, reset);
             }
             free(buf);
             buf = NULL;
