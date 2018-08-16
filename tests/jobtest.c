@@ -652,6 +652,7 @@ int main(int argc, char *argv[]) {
                 return 1;
             fclose(log);
             rewind(input);
+            system("./clear_netflix.sh");
         }
         if (input != stdin)
             fclose(input);
