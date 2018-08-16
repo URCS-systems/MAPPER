@@ -429,11 +429,6 @@ int test_joblist(const char *filename, FILE *input, FILE *csv, bool write_header
 
     free(line);
 
-    signal(SIGTERM, &handle_quit);
-    signal(SIGQUIT, &handle_quit);
-    signal(SIGINT, &handle_quit);
-    signal(SIGALRM, &handle_quit);
-
     /* run all jobs */
     printf("Running %d jobs for %u seconds...\n", num_jobs, test_length);
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
@@ -622,6 +617,11 @@ int main(int argc, char *argv[]) {
         usage(argv[0]);
         return 1;
     }
+
+    signal(SIGTERM, &handle_quit);
+    signal(SIGQUIT, &handle_quit);
+    signal(SIGINT, &handle_quit);
+    signal(SIGALRM, &handle_quit);
 
     for (int i = 0; i < num_joblists && !wants_to_quit; ++i) {
         FILE *input = NULL;
