@@ -519,8 +519,12 @@ int test_joblist(const char *filename, FILE *input, FILE *csv, bool write_header
 
     stop_thread = false;
 
+    struct job *last = job_list;
+    while (last->next)
+            last = last->next;
+
     printf("Summary:\n");
-    for (struct job *jb = job_list; jb; jb = jb->next) {
+    for (struct job *jb = last; jb; jb = jb->prev) {
         int n = 0;
         int rem = 0;
         double val = jb->avg_time;
@@ -551,10 +555,7 @@ int test_joblist(const char *filename, FILE *input, FILE *csv, bool write_header
     printf("Total changes: %10d, Total cpuset changes: %10d, Total job time: %10lf, Test duration: %10lf\n",
             total_context_changes, total_cpuset_changes, total_runtime, duration);
 
-    struct job *last = job_list;
-    if (write_header) {
-        while (last->next)
-            last = last->next;
+    if (write_header) {    
         for (struct job *jb = last; jb; jb = jb->prev)
             fprintf(csv, "%s,", jb->name);
         for (struct job *jb = job_list; jb; jb = jb->prev)
