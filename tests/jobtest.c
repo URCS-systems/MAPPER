@@ -623,7 +623,6 @@ int main(int argc, char *argv[]) {
     for (int i = 0; i < num_joblists && !wants_to_quit; ++i) {
         FILE *input = NULL;
         char *log_name = strdup(jls[i]);
-        const char *log_base = NULL;
         if (strcmp(argv[1], "-") == 0)
             input = stdin;
         else {
@@ -633,20 +632,15 @@ int main(int argc, char *argv[]) {
             }
         }
 
-        log_base = basename(log_name);
-            
         for (int j = 0; j < ntimes && !wants_to_quit; ++j) {
             FILE *log = NULL;
-            char *log_name2 = NULL;
-            asprintf(&log_name2, "%s-%d.csv", log_base, j+1);
 
-            if (!(log = fopen(log_name2, "w"))) {
-                fprintf(stderr, "failed to open `%s':%m\n", log_name2);
+            if (!(log = fopen(log_name, j == 0 ? "w" : "a"))) {
+                fprintf(stderr, "failed to open `%s':%m\n", log_name);
                 return 1;
             }
             if (test_joblist(jls[i], input, log, j == 0) != 0)
                 return 1;
-            free(log_name2);
             fclose(log);
             rewind(input);
         }
