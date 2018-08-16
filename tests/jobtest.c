@@ -558,7 +558,7 @@ int test_joblist(const char *filename, FILE *input, FILE *csv, bool write_header
     if (write_header) {    
         for (struct job *jb = last; jb; jb = jb->prev)
             fprintf(csv, "%s,", jb->name);
-        for (struct job *jb = job_list; jb; jb = jb->prev)
+        for (struct job *jb = last; jb; jb = jb->prev)
             fprintf(csv, "%1$s-N/s,%1$s-C/s,", jb->name);
         fprintf(csv, "N,C,runtime,duration\n");
     }
