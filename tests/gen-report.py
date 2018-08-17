@@ -14,7 +14,7 @@ results_dir = 'results'
 standalone_dir = '1'
 linux_schedname = 'linux'
 # I should've called these 'schednames' but it's too late now and I'm too lazy
-strategies = [linux_schedname, 'sam_map', 'hill_climbing', 'fair_share'] # list(results[standalone_dir].keys())
+strategies = [linux_schedname]
 results = {}
 
 def get_standalone(appname):
@@ -25,7 +25,7 @@ def get_standalone(appname):
 
 # read in all results
 for f in Path(results_dir).glob('*/*/*.csv'):
-    workload_size, strategy = re.match(results_dir + r'/(\w+)/('+ '|'.join(strategies) +')/.*', str(f)).group(1,2)
+    workload_size, strategy = re.match(results_dir + r'/(\w+)/(\w+)/.*', str(f)).group(1,2)
 
     if not workload_size in results:
         results[workload_size] = {}
@@ -60,6 +60,9 @@ for f in Path(results_dir).glob('*/*/*.csv'):
         #    raise Exception(f'{f}: app {app} does not exist')
         #if not standalone.exists():
         #    raise Exception(f'{f}: app {app} does not have a standalone to compare to ({standalone} does not exist)')
+
+    if not strategy in strategies:
+        strategies.append(strategy)
 
     results[workload_size][strategy].append(workload)
 
