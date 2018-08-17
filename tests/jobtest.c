@@ -304,6 +304,7 @@ static int parse_result(const struct job *jb, double *res)
     }
 
     /* we expect the result on a single line */
+    errno = 0;
     if (getline(&line, &sz, pf) == -1) {
         ret = -1;
         fprintf(stderr, "%sWARNING: could not read line from output of %s: %m%s\n", 
