@@ -17,7 +17,7 @@ for i in $(seq 1 $N_GRAPHCHI); do
 done
 
 # setup for number of threads
-sed -i "/run-parsec.sh/ s/-n 40/-n $nproc/g; /run-graphchi.sh/ s/--execthreads=40/--execthreads=$nproc/g" $joblists_dir/*.txt
+sed -i "/run-parsec.sh/ s/-n \\(\\d\\+\\)\\?/-n $nprocs /g; /run-graphchi.sh/ s/--execthreads=\\(\\d\\+\\)\\? /--execthreads=$nprocs /g" $joblists_dir/*.txt
 
 # generate Linux variants
 for f in $joblists_dir/*.txt; do
