@@ -1,0 +1,3 @@
+time: 500 s
+MG ../sam-launch ./run-nas.sh bin/./mg.C.x
+SP ../sam-launch ./run-nas.sh bin/./sp.C.x

@@ -1445,7 +1445,7 @@ int main(int argc, char *argv[])
               if ((int) mybudget_l == fair_share)
                 apps_sorted[j]->curr_fair_share = mybudget_l;
               printf("\t\tset CPU budget to %s\n", buf);
-
+							
 							if (apps_sorted[j]->OMPvalid) {
 								if (apps_sorted[j]->OMPptr) {
 									apps_sorted[j]->OMPptr->numthreads = CPU_COUNT_S(rem_cpus_sz, apps_sorted[j]->cpuset[0]);

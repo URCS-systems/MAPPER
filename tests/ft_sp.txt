@@ -1,0 +1,3 @@
+time: 600 s
+FT ../sam-launch ./run-nas.sh bin/./ft.C.x
+SP ../sam-launch ./run-nas.sh bin/./sp.C.x

@@ -1,0 +1,3 @@
+time: 1000 s
+Mandel ../sam-launch ./run-ompscr.sh ./c_mandel.par 100000 10
+MolecularDynamics ../sam-launch ./run-ompscr.sh ./c_md.par 800 20000 80

@@ -1,0 +1,4 @@
+CG ../sam-launch ./run-nas.sh bin/./cg.C.x 
+FT ../sam-launch ./run-nas.sh bin/./ft.C.x 
+MG ../sam-launch ./run-nas.sh bin/./mg.C.x 
+SP ../sam-launch ./run-nas.sh bin/./sp.C.x 

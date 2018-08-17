@@ -1,0 +1,3 @@
+time: 1000 s
+Jacobi ../sam-launch ./run-ompscr.sh ./c_jacobi01.par 10000 10000 0.8 1 4e-26 400 80
+MolecularDynamics ../sam-launch ./run-ompscr.sh ./c_md.par 800 20000 80

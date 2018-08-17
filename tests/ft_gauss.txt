@@ -1,0 +1,3 @@
+time: 400 s
+FT ../sam-launch ./run-nas.sh bin/./ft.C.x
+Gauss ../sam-launch ./run-gauss.sh ./fmp_gauss 10000 10 80

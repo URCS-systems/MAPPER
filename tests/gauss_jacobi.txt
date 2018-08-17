@@ -1,0 +1,3 @@
+time: 700 s
+Jacobi ../sam-launch ./run-ompscr.sh ./c_jacobi01.par 10000 10000 0.8 1 4e-26 400 80
+Gauss ../sam-launch ./run-gauss.sh ./fmp_gauss 10000 10 80

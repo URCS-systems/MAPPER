@@ -1,0 +1,3 @@
+time: 800 s
+Gauss ../sam-launch ./run-gauss.sh ./fmp_gauss 10000 10 80
+MolecularDynamics ../sam-launch ./run-ompscr.sh ./c_md.par 800 20000 80
