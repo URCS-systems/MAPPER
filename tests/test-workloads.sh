@@ -5,6 +5,7 @@ if (( $# < 2 )); then
     exit 1
 fi
 
+results_dir=results
 scheduler_name=$1
 num_apps=$2
 num_runs=${3:-3}
@@ -30,7 +31,9 @@ fi
 regex="$regex.txt\$"
 
 while read fname; do
-    if [ ! -e results/$num_apps/$scheduler_name/$fname.csv ]; then
+    if [ ! -e $results_dir/$num_apps/$scheduler_name/$fname.csv ]; then
         echo "-f workloads/$fname";
     fi
 done < <(ls workloads/ | grep -E $regex | grep -v $anti_regex) | xargs -t ./jobtest -n $num_runs
+
+echo "Done. After checking the CSVs, place them in $results/$num_apps/$scheduler_name/"
