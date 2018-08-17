@@ -14,6 +14,11 @@ anti_regex="^\$"    # don't filter out anything
 
 workloads=()
 
+if [ ! -d $results_dir/$num_apps/$scheduler_name ]; then
+    echo "ERROR: $results_dir/$num_apps/$scheduler_name doesn't exist"
+    exit 1
+fi
+
 for i in $(seq 1 $num_apps); do
     if (( $i == 1 )); then
         regex="^([[:alnum:]]+)"
@@ -36,4 +41,4 @@ while read fname; do
     fi
 done < <(ls workloads/ | grep -E $regex | grep -v $anti_regex) | xargs -t ./jobtest -n $num_runs
 
-echo "Done. After checking the CSVs, place them in $results/$num_apps/$scheduler_name/"
+echo "Done. After checking the CSVs, place them in $results_dir/$num_apps/$scheduler_name/"
