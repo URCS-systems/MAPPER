@@ -71,7 +71,9 @@ int main(int argc, char *argv[])
 
         if (mkdir(app_path, 0) < 0 && errno != EEXIST) {
             fprintf(stderr, "Failed to create %s: %s\n", app_path, strerror(errno));
-            exit(EXIT_FAILURE);
+            kill(initial_pid, SIGKILL);
+            waitpid(initial_pid, NULL, 0);
+            return 1;
         }
 
         snprintf(cg_name, sizeof cg_name, SAM_CGROUP_NAME "/app-%d", initial_pid);
