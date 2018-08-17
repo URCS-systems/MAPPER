@@ -19,8 +19,8 @@ for i in $(seq 1 $N_GRAPHCHI); do
     mkdir -p ~/netflix$i/
     # ln -s $graphchi_dir/smallnetflix_mm ~/netflix$i/
     # ln -s $graphchi_dir/smallnetflix_mme ~/netflix$i/
-    ln -s $GRAPHCHI_DIR/netflix_mm ~/netflix$i/
-    ln -s $GRAPHCHI_DIR/netflix_mme ~/netflix$i/
+    ln -sf $GRAPHCHI_DIR/netflix_mm ~/netflix$i/
+    ln -sf $GRAPHCHI_DIR/netflix_mme ~/netflix$i/
 done
 
 # setup for number of threads
