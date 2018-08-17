@@ -8,6 +8,13 @@ joblists_dir=./workloads # change this
 N_GRAPHCHI=6        # number of different graphchi applications
 nprocs=$(nproc)
 
+read -p "Remove ./workloads? (y/n)" remove_workloads
+
+if [[ $remove_workloads == "y" ]]; then
+    rm -rf $joblists_dir
+    git checkout $joblists_dir
+fi
+
 for i in $(seq 1 $N_GRAPHCHI); do
     mkdir -p ~/netflix$i/
     # ln -s $graphchi_dir/smallnetflix_mm ~/netflix$i/
