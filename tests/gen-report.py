@@ -70,7 +70,7 @@ for (workload_size, strategy_list) in results.items():
 # generate pages
 for (workload_size, strategy_list) in results.items():
     with open(f'results-page-{workload_size}.csv', mode='a', newline='') as page_file:
-        csv_writer = csv.writer(page_file, delimiter=' ')
+        csv_writer = csv.writer(page_file, delimiter=',')
         for (strategy, workload_list) in strategy_list.items():
             for workload in workload_list:
                 # get average runtimes for all apps
@@ -79,7 +79,8 @@ for (workload_size, strategy_list) in results.items():
 
                 # write the header
                 csv_writer.writerow([strategy])
-                csv_writer.writerow(workload['data'][0].keys())
+                # add an extra column on the left to align with AMean
+                csv_writer.writerow([' '] + list(workload['data'][0].keys()))
 
                 for row in workload['data']:
                     for appname in workload['apps']:
@@ -87,7 +88,8 @@ for (workload_size, strategy_list) in results.items():
                         if not row[appname]:
                             raise Exception(f"{workload['f']}:{lineno+1}: app {appname} has a zero entry")
                     # also write data
-                    csv_writer.writerow(row.values())
+                    # add an extra column on the left to align with AMean
+                    csv_writer.writerow([' '] + list(row.values()))
                     lineno = lineno + 1
 
                 apps_avg_runtime = {appname: v/len(workload['data']) for appname,v in apps_avg_runtime.items()}
