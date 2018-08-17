@@ -1,0 +1,6 @@
+time: 300 s
+canneal ../sam-launch ./run-parsec.sh parsecmgmt -a run -p canneal -n  -i native | ./parse_parsec2.sh
+SGD  ../sam-launch ./run-graphchi.sh toolkits/collaborative_filtering/sgd --training=~/netflix3/netflix_mm --validation=~/netflix3/netflix_mme --sgd_lambda=1e-4 --sgd_gamma=1e-4 --minval=1 --maxval=5 --max_iter=6 --execthreads= | ./parse_graphchi.sh
+SVDPP  ../sam-launch ./run-graphchi.sh  toolkits/collaborative_filtering/svdpp --training=~/netflix5/netflix_mm --validation=~/netflix5/netflix_mme --biassgd_lambda=1e-4 --biassgd_gamma=1e-4 --minval=1  --maxval=5 --max_iter=6 --execthreads= | ./parse_graphchi.sh
+BIASSGD ../sam-launch ./run-graphchi.sh toolkits/collaborative_filtering/biassgd --training=~/netflix1/netflix_mm --validation=~/netflix1/netflix_mme --biassgd_lambda=1e-4 --biassgd_gamma=1e-4 --minval=1 --maxval=5 --max_iter=6 --execthreads= | ./parse_graphchi.sh
+

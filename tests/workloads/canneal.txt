@@ -1,0 +1,2 @@
+time: 200 s
+canneal ../sam-launch ./run-parsec.sh parsecmgmt -a run -p canneal -n  -i native | ./parse_parsec2.sh

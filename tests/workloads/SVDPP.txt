@@ -1,0 +1,3 @@
+time: 200 s
+SVDPP ../sam-launch ./run-graphchi.sh  toolkits/collaborative_filtering/svdpp --training=netflix_mm --validation=netflix_mme --biassgd_lambda=1e-4 --biassgd_gamma=1e-4 --minval=1  --maxval=5 --max_iter=6  --execthreads= | ./parse_graphchi.sh
+

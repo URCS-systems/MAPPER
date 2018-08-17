@@ -4,7 +4,7 @@
 
 source ./include.sh
 
-joblists_dir=./node2x10a    # change this
+joblists_dir=./workloads # change this
 N_GRAPHCHI=6        # number of different graphchi applications
 nprocs=$(nproc)
 

@@ -1,0 +1,5 @@
+time: 300 s
+x264 ../sam-launch ./run-parsec.sh parsecmgmt -a run -p x264 -n  -i native | ./parse_parsec2.sh
+SGD  ../sam-launch ./run-graphchi.sh toolkits/collaborative_filtering/sgd --training=~/netflix3/netflix_mm --validation=~/netflix3/netflix_mme --sgd_lambda=1e-4 --sgd_gamma=1e-4 --minval=1 --maxval=5 --max_iter=6 --execthreads= | ./parse_graphchi.sh
+
+

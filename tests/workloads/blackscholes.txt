@@ -1,0 +1,2 @@
+time: 200 s
+blackscholes ../sam-launch ./run-parsec.sh parsecmgmt -a run -p blackscholes -n  -i native | ./parse_parsec2.sh

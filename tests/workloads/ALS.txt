@@ -1,0 +1,3 @@
+time: 200 s
+ALS ../sam-launch ./run-graphchi.sh toolkits/collaborative_filtering/als --training=netflix_mm --validation=netflix_mme --lambda=0.065 --minval=1 --maxval=5 --max_iter=6  --execthreads= | ./parse_graphchi.sh
+

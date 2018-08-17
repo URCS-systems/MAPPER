@@ -1,0 +1,6 @@
+time: 300 s
+BIASSGD ../sam-launch ./run-graphchi.sh toolkits/collaborative_filtering/biassgd --training=~/netflix1/netflix_mm --validation=~/netflix1/netflix_mme --biassgd_lambda=1e-4 --biassgd_gamma=1e-4 --minval=1 --maxval=5 --max_iter=6 --execthreads= | ./parse_graphchi.sh
+ALS ../sam-launch ./run-graphchi.sh toolkits/collaborative_filtering/als --training=~/netflix2/netflix_mm --validation=~/netflix2/netflix_mme --lambda=0.065 --minval=1 --maxval=5 --max_iter=6 --execthreads= | ./parse_graphchi.sh
+x264 ../sam-launch ./run-parsec.sh parsecmgmt -a run -p x264 -n  -i native | ./parse_parsec2.sh
+
+

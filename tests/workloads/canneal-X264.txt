@@ -1,0 +1,5 @@
+time: 300 s
+canneal ../sam-launch ./run-parsec.sh parsecmgmt -a run -p canneal -n  -i native | ./parse_parsec2.sh
+x264 ../sam-launch ./run-parsec.sh parsecmgmt -a run -p x264 -n  -i native | ./parse_parsec2.sh
+
+
