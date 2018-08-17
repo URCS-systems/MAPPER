@@ -2,5 +2,5 @@
 
 source ./include.sh
 
-cd $PARSECDIR
+cd $parsec_dir
 exec $@
