@@ -35,10 +35,19 @@ fi
 
 regex="$regex.txt\$"
 
-while read fname; do
-    if [ ! -e $results_dir/$num_apps/$scheduler_name/$fname.csv ]; then
-        echo "-f workloads/$fname";
-    fi
-done < <(ls workloads/ | grep -E $regex | grep -v $anti_regex) | xargs -t ./jobtest -n $num_runs
+csvs=($(ls workloads/ | grep -E $regex | grep -v $anti_regex))
 
-echo "Done. After checking the CSVs, place them in $results_dir/$num_apps/$scheduler_name/"
+for fname in ${csvs[@]}; do
+    if [ ! -e $results_dir/$num_apps/$scheduler_name/$fname.csv ]; then
+        echo "-f workloads/$fname"
+    fi
+done | xargs -t ./jobtest -n $num_runs
+
+
+csvs=($(printf '%s\n' ${csvs[@]} | while read fname; do if [ -e "$fname.csv" ]; then echo "$fname.csv"; fi; done))
+
+if (( ${#csvs[@]} > 0 )); then
+    mv -t $results_dir/$num_apps/$scheduler_name/ ${csvs[@]}
+fi
+
+echo "Done. Check the CSVs in $results_dir/$num_apps/$scheduler_name/"
