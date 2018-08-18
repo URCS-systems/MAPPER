@@ -87,7 +87,7 @@ for (workload_size, strategy_list) in results.items():
         for workload in workload_list:
             # get average runtimes for all apps
             apps_avg_runtime = {appname: 0 for appname in workload['apps']}
-            lineno = 0
+            lineno = 1  # the first line is the header
 
             for row in workload['data']:
                 for appname in workload['apps']:
