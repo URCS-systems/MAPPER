@@ -168,7 +168,9 @@ int cg_read_intlist(const char *root,
 
     fscanf(fp, "%ms", &buf);
 
-    if (string_to_intlist(buf, value_in, length_in) != 0)
+    if (!buf)
+        err = ENODATA;
+    else if (string_to_intlist(buf, value_in, length_in) != 0)
         err = errno;
 
     free(buf);
