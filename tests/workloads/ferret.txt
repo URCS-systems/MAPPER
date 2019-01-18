@@ -1,2 +1,2 @@
 time: 200 s
-ferret ../sam-launch ./run-parsec.sh parsecmgmt -a run -p ferret -n  -i native | ./parse_parsec1.sh
+ferret ../sam-launch ./run-parsec.sh parsecmgmt -a run -p ferret -n 80  -i native | ./parse_parsec1.sh

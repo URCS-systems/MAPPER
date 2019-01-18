@@ -1,2 +1,2 @@
 time: 200 s
-SGD ../sam-launch ./run-graphchi.sh toolkits/collaborative_filtering/sgd --training=~/netflix3/netflix_mm --validation=~/netflix3/netflix_mme --sgd_lambda=1e-4 --sgd_gamma=1e-4 --minval=1 --maxval=5 --max_iter=6 --execthreads= | ./parse_graphchi.sh
+SGD ../sam-launch ./run-graphchi.sh toolkits/collaborative_filtering/sgd --training=~/netflix3/netflix_mm --validation=~/netflix3/netflix_mme --sgd_lambda=1e-4 --sgd_gamma=1e-4 --minval=1 --maxval=5 --max_iter=6 --execthreads=80 | ./parse_graphchi.sh

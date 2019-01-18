@@ -1,3 +1,3 @@
 time: 200 s
-LSGD ../sam-launch ./run-graphchi.sh toolkits/collaborative_filtering/biassgd2 --training=~/netflix6/netflix_mm --minval=1 --maxval=5 --validation=~/netflix6/netflix_mme --biassgd_gamma=1e-2 -biassgd_lambda=1e-2  --max_iter=6  --loss=logistic --biassgd_step_dec=0.99999 --execthreads= | ./parse_graphchi.sh
+LSGD ../sam-launch ./run-graphchi.sh toolkits/collaborative_filtering/biassgd2 --training=~/netflix6/netflix_mm --minval=1 --maxval=5 --validation=~/netflix6/netflix_mme --biassgd_gamma=1e-2 -biassgd_lambda=1e-2  --max_iter=6  --loss=logistic --biassgd_step_dec=0.99999 --execthreads=80 | ./parse_graphchi.sh
 

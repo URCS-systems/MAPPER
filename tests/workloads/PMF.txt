@@ -1,3 +1,3 @@
 time: 200 s
-PMF ../sam-launch ./run-graphchi.sh toolkits/collaborative_filtering/pmf --training=~/netflix4/netflix_mm --minval=1 --maxval=5 --max_iter=6 --pmf_burn_in=5 --execthreads= | ./parse_graphchi.sh
+PMF ../sam-launch ./run-graphchi.sh toolkits/collaborative_filtering/pmf --training=~/netflix4/netflix_mm --minval=1 --maxval=5 --max_iter=6 --pmf_burn_in=5 --execthreads=80 | ./parse_graphchi.sh
 

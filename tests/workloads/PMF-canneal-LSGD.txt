@@ -1,6 +1,6 @@
 time: 300 s
-PMF ../sam-launch ./run-graphchi.sh toolkits/collaborative_filtering/pmf --training=~/netflix4/netflix_mm --minval=1 --maxval=5 --max_iter=6 --pmf_burn_in=5 --execthreads= | ./parse_graphchi.sh
-canneal ../sam-launch ./run-parsec.sh parsecmgmt -a run -p canneal -n  -i native | ./parse_parsec2.sh
-LSGD ../sam-launch ./run-graphchi.sh toolkits/collaborative_filtering/biassgd2 --training=~/netflix6/netflix_mm --minval=1 --maxval=5 --validation=~/netflix6/netflix_mme --biassgd_gamma=1e-2 -biassgd_lambda=1e-2  --max_iter=6 --loss=logistic --biassgd_step_dec=0.99999 --execthreads= | ./parse_graphchi.sh
+PMF ../sam-launch ./run-graphchi.sh toolkits/collaborative_filtering/pmf --training=~/netflix4/netflix_mm --minval=1 --maxval=5 --max_iter=6 --pmf_burn_in=5 --execthreads=80 | ./parse_graphchi.sh
+canneal ../sam-launch ./run-parsec.sh parsecmgmt -a run -p canneal -n 80  -i native | ./parse_parsec2.sh
+LSGD ../sam-launch ./run-graphchi.sh toolkits/collaborative_filtering/biassgd2 --training=~/netflix6/netflix_mm --minval=1 --maxval=5 --validation=~/netflix6/netflix_mme --biassgd_gamma=1e-2 -biassgd_lambda=1e-2  --max_iter=6 --loss=logistic --biassgd_step_dec=0.99999 --execthreads=80 | ./parse_graphchi.sh
 
 

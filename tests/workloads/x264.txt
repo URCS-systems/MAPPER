@@ -1,2 +1,2 @@
 time: 200 s
-x264 ../sam-launch ./run-parsec.sh parsecmgmt -a run -p x264 -n  -i native | ./parse_parsec2.sh
+x264 ../sam-launch ./run-parsec.sh parsecmgmt -a run -p x264 -n 80  -i native | ./parse_parsec2.sh
