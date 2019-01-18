@@ -4,6 +4,7 @@
 
 #include <string.h>
 #include <assert.h>
+#include <stdbool.h>
 
 extern struct cpuinfo *cpuinfo;
 
@@ -169,6 +170,7 @@ budget_no_hyperthread(cpu_set_t *old_cpuset, cpu_set_t *new_cpuset,
     int k = 0;
     const float perf_loss_factor = 0.3;     /* tweak this */
     int m = 0;
+    bool old_cpuset2_valid = true;
 
     memset(ctxs, 0, cpuinfo->num_sockets * sizeof ctxs[0]);
     memset(ctxs_old2, 0, cpuinfo->num_sockets * sizeof ctxs_old2[0]);
@@ -212,19 +214,30 @@ budget_no_hyperthread(cpu_set_t *old_cpuset, cpu_set_t *new_cpuset,
 
                 if (CPU_ISSET_S(hw.tnumber, cpus_sz, old_cpuset2)) {
                     ctxs_old2[sock_id] |= 1u << c;
+                    old_cpuset2_valid &= CPU_ISSET_S(hw.tnumber, cpus_sz, remaining_cpus);
                 }
             }
         }
+        
+        // only consider keeping the old cpuset if it's still valid
+        if (old_cpuset2_valid) {
+            i = 0;
 
-        i = 0;
+            for (int l = 0; l < cpuinfo->num_sockets; ++l) {
+                i += __builtin_popcount(ctxs[l] & (ctxs[l] >> 1));
+                k += __builtin_popcount(ctxs_old2[l] & (ctxs_old2[l] >> 1));
+            }
 
-        for (int l = 0; l < cpuinfo->num_sockets; ++l) {
-            i += __builtin_popcount(ctxs[l] & (ctxs[l] >> 1));
-            k += __builtin_popcount(ctxs_old2[l] & (ctxs_old2[l] >> 1));
-        }
-
-        if (perf_loss_factor*(k - i) + (j - m) <= 0.f) {
-            memcpy(new_cpuset, old_cpuset2, cpus_sz);
+            /**
+             * j = (new) number of CPUs
+             * m = (old) number of CPUs
+             * i = (new) number of hyperthread CPUs
+             * k = (old) number of hyperthread CPUs
+             *
+             */
+            if (perf_loss_factor*(k - i) + (j - m) <= 0.f) {
+                memcpy(new_cpuset, old_cpuset2, cpus_sz);
+            }
         }
 
         CPU_FREE(old_cpuset2);
