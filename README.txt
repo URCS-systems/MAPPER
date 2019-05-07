@@ -25,6 +25,8 @@ LLC_Misses ( approximately measures memory contention): 0x412e
 
 Additional notes
 ----------------
+We use thresholds based on microbenchmark based experiments discussed in Share Aware Mapper (https://dl.acm.org/citation.cfm?id=2813807). 
+The thresholds are defined as Macros in SAM_equi.cpp 
 SAM-MAP uses the architectural information available using the lscpu comman to understand cores and sockets in the underlying system automatically.
 Can use commands like "lscpu" and "htop" to debug any abnormalities observed.
 

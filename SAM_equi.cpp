@@ -33,7 +33,7 @@
 #include "util.h"
 #include "perfMulti/perThread_perf.h"
 #include <sys/time.h>
-// SAM
+// SAM (pre-computed thresholds)
 #define MAX_COUNTERS 50
 #define SHAR_MEM_THRESH 30000000
 #define SHAR_COHERENCE_THRESH 450000

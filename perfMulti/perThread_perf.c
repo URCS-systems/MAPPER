@@ -1,7 +1,7 @@
 /*Compile with- gcc perf_test.c -o PERF_TEST
  * Run- sudo ./PERF_TEST
  */
-
+//Header file contains description of data structures used and the events
 #include "perThread_perf.h"
 #include <stdbool.h>
 #include <assert.h>
@@ -9,12 +9,12 @@
 #define PRINT false
 
 uint64_t event_codes[N_EVENTS] = {
-    [EVENT_SNP]		    = 0x06d2,
-    [EVENT_INSTRUCTIONS]    = 0xc0,
-    [EVENT_REMOTE_HITM]     = 0x10d3,    
+    [EVENT_SNP]		    = 0x06d2,        //SNOOP HIT and SNOOP HITM for intra-socket communication
+    [EVENT_INSTRUCTIONS]    = 0xc0,          //Number of instructions for IPC
+    [EVENT_REMOTE_HITM]     = 0x10d3,        //REmote HIT Modified for Inter-socket communication
     
-    [EVENT_UNHALTED_CYCLES] = 0x3c,
-    [EVENT_LLC_MISSES]      = 0x412e,
+    [EVENT_UNHALTED_CYCLES] = 0x3c,          //Unhalted cycles for IPC
+    [EVENT_LLC_MISSES]      = 0x412e,        //Last Level Cache misses for Memory contention
     
 };
 
@@ -27,7 +27,7 @@ const char *event_names[N_EVENTS] = {
     [EVENT_LLC_MISSES]          = "LLC misses",
         
 };
-
+//Events divided into two groups based on compatibility
 struct perf_group event_groups[] = {
     { .items = { EVENT_SNP, EVENT_INSTRUCTIONS, EVENT_REMOTE_HITM }, .size = 3 },
     { .items = { EVENT_UNHALTED_CYCLES, EVENT_LLC_MISSES }, .size = 2 }
@@ -36,7 +36,7 @@ struct perf_group event_groups[] = {
 #define N_GROUPS (sizeof(event_groups) / sizeof(event_groups[0]))
 
 struct perf_stat *threads = NULL;
-
+//perf event open function calls
 static int perf_event_open(struct perf_event_attr *hw_event, pid_t pid, int cpu, int group_fd,
                             unsigned long flags)
 {
@@ -45,18 +45,19 @@ static int perf_event_open(struct perf_event_attr *hw_event, pid_t pid, int cpu,
     return ret;
 }
 
+//Set up the perf event attribute and they are part of a group
 void setPerfAttr(struct perf_event_attr *pea, enum perf_event event, int group_fd, int *fd, uint64_t *id,
                  int cpu, pid_t tid)
 {
 
     memset(pea, 0, sizeof *pea); // allocating memory
-    pea->type = PERF_TYPE_RAW;
+    pea->type = PERF_TYPE_RAW;                             //Specifying event configuration as hex values
     pea->size = sizeof(struct perf_event_attr);
-    pea->config = event_codes[event];
+    pea->config = event_codes[event];                      //get event values from enum
     pea->disabled = 1;  //set to 0 when not using start stop
     // pea[cpu].exclude_kernel=1;
     // pea[cpu].exclude_hv=1;
-    pea->read_format = PERF_FORMAT_GROUP | PERF_FORMAT_ID;
+    pea->read_format = PERF_FORMAT_GROUP | PERF_FORMAT_ID;             //read as group
     *fd = perf_event_open(pea, tid, cpu, group_fd, 0); // group leader has group id -1
     if (*fd == -1)  //Don't start orstopt read events on this
 		*fd = -1;
@@ -66,6 +67,7 @@ void setPerfAttr(struct perf_event_attr *pea, enum perf_event event, int group_f
         ioctl(*fd, PERF_EVENT_IOC_ID, id); // retrieve identifier for first counter
 }
 
+//start event monitoring IO controller signal
 void start_event(int fd)
 {
     if (fd != -1) {
@@ -74,6 +76,7 @@ void start_event(int fd)
     }
 }
 
+//Stop event monitoring and read
 void stop_read_counters(const int fds[], size_t num_fds, const uint64_t ids[], uint64_t *valptrs[]) {
     if (num_fds < 1)
         return;
@@ -106,6 +109,7 @@ void stop_read_counters(const int fds[], size_t num_fds, const uint64_t ids[], u
         close(fds[i]);
 }
 
+//master function that orchestrates the entire performance monitoring for threads
 void count_event_perfMultiplex(pid_t tid[], int index_tid)
 {
     // Initialize time interval to count
