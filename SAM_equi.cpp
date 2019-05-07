@@ -619,6 +619,7 @@ void procinfo::readCounters(int index)
   return;
 }
 
+//File limits for metadata management
 void setup_file_limits()
 {
   struct rlimit limit;
@@ -640,8 +641,10 @@ void setup_file_limits()
   return;
 }
 
+
 int main(int argc, char *argv[])
 {
+	//Initialization and basic checks
   int init_error = 0;
 
   size_t rem_cpus_sz;
@@ -705,7 +708,7 @@ int main(int argc, char *argv[])
     // thresh_pt[METRIC_REMOTE] = SHAR_REMOTE_THRESH;
 
     ordernum = 0;
-    counter_order[ordernum++] = METRIC_INTER; // LLC_MISSES
+    counter_order[ordernum++] = METRIC_INTER;
     counter_order[ordernum++] = METRIC_INTRA;
     counter_order[ordernum++] = METRIC_MEM;
     counter_order[ordernum++] = METRIC_AVGIPC;

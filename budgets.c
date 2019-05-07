@@ -1,3 +1,4 @@
+/*This file contains information regarding the buf=dgetting of resources (CPUs, logical context in this scenario)*/
 #include "budgets.h"
 #include "cpuinfo.h"
 #include "mapper.h"
