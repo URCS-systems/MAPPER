@@ -1,5 +1,5 @@
-#ifndef PER_THREAD_H
-#define PER_THREAD_H
+#ifndef PERFIO_H
+#define PERFIO_H
 
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE /* See feature_test_macros(7) */
@@ -59,7 +59,7 @@ struct perfThread {
     int index_tid;
     uint64_t event[NUM_THREAD][N_EVENTS];
 };
-struct perfThread THREADS;
+extern struct perfThread THREADS;
 
 // Data structure for reading counters
 struct read_format {
@@ -127,4 +127,4 @@ int searchTID(int tid);
 };
 #endif
 
-#endif  /* PER_THREAD_H */
+#endif  /* PERFIO_H */

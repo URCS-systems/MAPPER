@@ -31,7 +31,7 @@
 #include "cpuinfo.h"
 #include "mapper.h"
 #include "util.h"
-#include "perfMulti/perThread_perf.h"
+#include "perfio.h"
 #include <sys/time.h>
 // SAM (pre-computed thresholds)
 #define MAX_COUNTERS 50

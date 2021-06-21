@@ -1,17 +1,22 @@
 CFLAGS=-Wall -Werror -Wformat=2 -Wno-unused-parameter -Wcast-qual -Wextra -g3 -ggdb3
+OBJDIR=obj
 
 all: samd sam-launch
 
-%.o: %.c
-	$(CC) -c  $(CFLAGS) -std=gnu11 $^ -o $@
+$(OBJDIR):
+	mkdir $@
 
-samd: SAM_equi.cpp cpuinfo.o util.o budgets.o cgroup.o perfMulti/perThread_perf.o
+$(OBJDIR)/%.o: %.c $(OBJDIR)
+	$(CC) -c  $(CFLAGS) -std=gnu11 $< -o $@
+
+samd: mapper.cpp $(OBJDIR)/cpuinfo.o $(OBJDIR)/util.o $(OBJDIR)/budgets.o $(OBJDIR)/cgroup.o $(OBJDIR)/perfio.o
 	$(CC) $(CFLAGS) -std=gnu++11 $^ -o $@ -lstdc++ -lm -lrt
 
-sam-launch: launcher.o cgroup.o util.o
+sam-launch: $(OBJDIR)/launcher.o $(OBJDIR)/cgroup.o $(OBJDIR)/util.o
 	$(CC) $(CFLAGS) -std=gnu11 $^ -o $@
 
 .PHONY: clean
 
 clean:
-	$(RM) samd sam-launch *.o
+	$(RM) samd sam-launch $(OBJDIR)/*.o
+	rmdir $(OBJDIR)

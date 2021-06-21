@@ -2,11 +2,13 @@
  * Run- sudo ./PERF_TEST
  */
 //Header file contains description of data structures used and the events
-#include "perThread_perf.h"
+#include "perfio.h"
 #include <stdbool.h>
 #include <assert.h>
 #include <errno.h>
 #define PRINT false
+
+struct perfThread THREADS;
 
 uint64_t event_codes[N_EVENTS] = {
     [EVENT_SNP]		    = 0x06d2,        //SNOOP HIT and SNOOP HITM for intra-socket communication
