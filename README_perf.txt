@@ -25,14 +25,13 @@ LLC_Misses ( approximately measures memory contention): 0x412e
 
 
 
-Directory perfMulti added which contains perf multiplexing functionality
-Changes made only to SAM.cpp
-1) Includes file perThread_perf.c
-2) Argument added to PerfData:readCounters and PerfData:printCounters for copying performance counter values into pre-existing data structure
-3) system call to use libpfm disbaled in PerfData:initialize() line 405 as now we are dependent on perf_event_open for performance counters
-4) Code added to copy into data structure in PerfData:printCounters
-5) options->pid has been changed to pid in some places
-6) In main, initialize_events being called, and then in loop(GOTO) count_event_perfMultiplex and displayEvents being called with a list of TIDs 
+perfio.c added which contains perf multiplexing functionality
+Changes made only to mapper.cpp
+1) Argument added to PerfData:readCounters and PerfData:printCounters for copying performance counter values into pre-existing data structure
+2) system call to use libpfm disbaled in PerfData:initialize() line 405 as now we are dependent on perf_event_open for performance counters
+3) Code added to copy into data structure in PerfData:printCounters
+4) options->pid has been changed to pid in some places
+5) In main, initialize_events being called, and then in loop(GOTO) count_event_perfMultiplex and displayEvents being called with a list of TIDs 
 
 
 To Do:
