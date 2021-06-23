@@ -32,25 +32,8 @@
 #include "mapper.h"
 #include "util.h"
 #include "perfio.h"
+#include "scheduler.h"
 #include <sys/time.h>
-// SAM (pre-computed thresholds)
-#define MAX_COUNTERS 50
-#define SHAR_MEM_THRESH 30000000
-#define SHAR_COHERENCE_THRESH 450000
-#define SHAR_HCOH_THRESH 800000
-#define SHAR_REMOTE_THRESH 2700000
-#define SHAR_CYCLES 1900000000.0
-#define SHAR_IPC_THRESH 700
-#define SHAR_COH_IND SHAR_COHERENCE_THRESH / 2
-#define SHAR_REMOTE_THRESH 2700000
-#define SHAR_IPC_THRESH 700
-#define SAM_MIN_CONTEXTS 4
-#define SAM_MIN_QOS 0.75
-#define SAM_PERF_THRESH 0.05 /* in fraction of previous performance */
-#define SAM_PERF_STEP 4 /* in number of CPUs */
-#define SAM_DISTURB_PROB 0.3 /* probability of a disturbance */
-#define SAM_INITIAL_ALLOCS 4 /* number of initial allocations before exploring */
-#define SAM_MIN_THREADS 4
 
 #define PRINT_BOTTLENECK false
 #define HILL_CLIMBING false
@@ -109,98 +92,6 @@ const char *metric_names[N_METRICS] = {
   [METRIC_INTER] = "Inter-socket communication",
 };
 
-struct OMPdata {
-  double progress;
-  int valid_progress;
-  int numthreads;
-  int valid_threads;
-};
-
-struct appinfo {
-  /**
-   * application PID
-   */
-  pid_t pid;
-  uint64_t metric[N_METRICS];
-  uint64_t extra_metric[N_EXTRA_METRICS];
-  uint64_t bottleneck[N_METRICS];
-  uint64_t value[MAX_COUNTERS];
-
-  /**
-   * The number of PerfData's that refer to this application.
-   */
-  uint64_t refcount;
-  /**
-   * The current bottleneck for this application.
-   */
-  enum metric curr_bottleneck;
-  /**
-   * The previous bottleneck for this application.
-   */
-  enum metric prev_bottleneck;
-  /**
-   * The history of CPU sets for this application.
-   * cpuset[0] is the latest CPU set.
-   */
-  cpu_set_t *cpuset[2];
-  /**
-   * This is the average performance for each CPU count.
-   * The size of this array is equal to the total number of CPUs (cpuinfo->total_cpus) + 1.
-   * Uninitialized values are 0.
-   * The performance is based on the METRIC_IPS.
-   * The second value is the number of times the application has been given this allocation,
-   * which we use for computing the average.
-   */
-  uint64_t (*perf_history)[2];
-  /**
-   * The current fair share for this application. It can change if the number of applications
-   * changes.
-   */
-  int curr_fair_share;
-  /**
-   * Number of times the application has been given an allocation.
-   */
-  int times_allocated;
-  /**
-   * The last time this application was measured.
-   */
-  struct timespec ts;
-  /**
-   * Whether the application is currently exploring resources for better performance.
-   */
-  bool exploring;
-  /**
-   * This is the [appno]'th app, starting from 0.
-   */
-  int appno;
-  struct appinfo *prev, *next;
-
-  /* Added for HILL CLIMBING */
-  /**
-   * 1 means positive direction, -1 means negative direction, store direction in order to 
-   * resume
-   */
-  int hill_direction;
-  /**
-   * count the number of iterations suspended
-   */
-  int suspend_iter;
-  /**
-   * whether resuming hill climbing or not
-   */
-  bool hill_resume;
-  /**
-   * resource allocated
-   */
-  int bin_search_resource;
-  int bin_direction;
-  /* Shared memory for OpenMP communication */
-  struct OMPdata *OMPptr;
-  char OMPname[100];
-  int OMPfd;
-  int OMPvalid;
-};
-
 bool stoprun = false;
 bool print_counters = false;
 bool print_proc_creation = false;
@@ -210,51 +101,6 @@ struct appinfo **apps_array;
 struct appinfo *apps_list;
 int num_apps = 0;
 int num_procs = 0;
-
-static inline int guess_optimization(const int budget, enum metric bottleneck)
-{
-  const int cpus_per_socket = cpuinfo->sockets[0].num_cpus;
-  int f = random() / (double)RAND_MAX < 0.5 ? -1 : 1;
-
-  if (bottleneck == METRIC_INTER || bottleneck == METRIC_INTRA) {
-    f = random() / (double)RAND_MAX < 0.8 ? -1 : 1;
-    if (budget % cpus_per_socket) {
-      int step = cpus_per_socket - (budget % cpus_per_socket);
-      if (f < 0) {
-        step = -(budget % cpus_per_socket);
-        if (budget < cpus_per_socket)
-          step = -SAM_PERF_STEP;
-      }
-      return step;
-    }
-    if (f == -1 && budget == cpus_per_socket)
-      return -SAM_PERF_STEP;
-    return f * cpus_per_socket;
-  }
-
-  return f * SAM_PERF_STEP;
-}
-
-static inline int determine_step_size(enum metric bottleneck, int curr_alloc, int dir)
-{
-  const int cpus_per_socket = cpuinfo->sockets[0].num_cpus;
-
-  if (bottleneck == METRIC_INTER || bottleneck == METRIC_INTRA) {
-    if (curr_alloc <= cpus_per_socket)
-      return SAM_PERF_STEP;
-    else {
-      if (dir == 1)
-        return cpus_per_socket - (curr_alloc % cpus_per_socket);
-      else {
-        if (curr_alloc % cpus_per_socket)
-          return (curr_alloc % cpus_per_socket);
-        else
-          return cpus_per_socket;
-      }
-    }
-  }
-  return SAM_PERF_STEP;
-}
 
 /**
  * Reverse comparison. Produces a sorted list from largest to smallest element.
@@ -949,202 +795,15 @@ int main(int argc, char *argv[])
           initial_remaining_cpus += curr_alloc_len;
           per_app_cpu_budget[j] = curr_alloc_len;
 #if FAIR
-          /*If application has already been sorted, then just check for adjusting fair share*/
-          if (apps_sorted[j]->times_allocated > SAM_INITIAL_ALLOCS) {
-            //If fair share has changed then adjust to new fair share
-            if (apps_sorted[j]->curr_fair_share != fair_share && apps_sorted[j]->perf_history[fair_share] != 0) {
-              apps_sorted[j]->curr_fair_share = fair_share;
-              printf("FAIR SHARE [APP %6d] changing fair share\n", apps_sorted[j]->pid);
-            }
-
-          } else {
-            //Give the application fair share
-            per_app_cpu_budget[j] = fair_share;
-            printf("FAIR SHARE [APP %6d] setting fair share \n", apps_sorted[j]->pid);
-          }
-
+          scheduler_policy_fair(j, apps_sorted, per_app_cpu_budget, fair_share);
 #elif HILL_CLIMBING
-          //HILL_CLIMBING IS THE SAME
-          /* If this app has already been given an allocation, then we can compute history
-           * and excess cores.
-           */
-          if (apps_sorted[j]->times_allocated > SAM_INITIAL_ALLOCS) {
-            /* compute performance history */
-            uint64_t history[2];
-            memcpy(history, apps_sorted[j]->perf_history[curr_alloc_len], sizeof history);
-            history[1]++;
-            history[0] = apps_sorted[j]->extra_metric[EXTRA_METRIC_IPS] * (1 / (double)history[1]) +
-                         history[0] * ((history[1] - 1) / (double)history[1]);
-
-            /* Change application's fair share count if the creation of new applications
-             * changes the fair share. */
-            if (apps_sorted[j]->curr_fair_share != fair_share && apps_sorted[j]->perf_history[fair_share] != 0)
-              apps_sorted[j]->curr_fair_share = fair_share;
-
-            uint64_t curr_perf = history[0];
-
-            if (apps_sorted[j]->times_allocated > 1) {
-              /* Compare current performance with previous performance, if this application
-               * has at least two items in history.  */
-
-              int prev_alloc_len = CPU_COUNT_S(rem_cpus_sz, apps_sorted[j]->cpuset[1]);
-              uint64_t prev_perf = apps_sorted[j]->perf_history[prev_alloc_len][0];
-
-              /* Original decision making:
-               * Change requested resources. */
-              if (curr_perf > prev_perf && (curr_perf - prev_perf) / (double)prev_perf >= SAM_PERF_THRESH &&
-                  apps_sorted[j]->exploring) {
-                /* Keep going in the same direction. */
-                printf("HILL CLIMBING [APP %6d] continuing in same direction \n", apps_sorted[j]->pid);
-                if (prev_alloc_len < curr_alloc_len)
-                  per_app_cpu_budget[j] = MIN(per_app_cpu_budget[j] + SAM_PERF_STEP, cpuinfo->total_cpus);
-                else
-                  per_app_cpu_budget[j] = MAX(per_app_cpu_budget[j] - SAM_PERF_STEP, SAM_MIN_CONTEXTS);
-              } else {
-                if (curr_perf < prev_perf && (prev_perf - curr_perf) / (double)prev_perf >= SAM_PERF_THRESH) {
-                  if (apps_sorted[j]->exploring) {
-                    /* Revert to previous count if performance reduction was great enough.
-							   */
-                    per_app_cpu_budget[j] = prev_alloc_len;
-                  } else {
-                    int guess = per_app_cpu_budget[j] + guess_optimization(per_app_cpu_budget[j], counter_order[i]);
-                    guess = MAX(MIN(guess, cpuinfo->total_cpus), SAM_MIN_CONTEXTS);
-                    apps_sorted[j]->exploring = true;
-                    per_app_cpu_budget[j] = guess;
-                  }
-                  printf("HILL CLIMBING [APP %6d] exploring %d -> %d\n", apps_sorted[j]->pid, curr_alloc_len,
-                         per_app_cpu_budget[j]);
-                } else {
-                  apps_sorted[j]->exploring = false;
-                  printf("HILL CLIMBING [APP %6d] exploring no more \n", apps_sorted[j]->pid);
-                  if (random() / (double)RAND_MAX <= SAM_DISTURB_PROB) {
-                    int guess = per_app_cpu_budget[j] + guess_optimization(per_app_cpu_budget[j], counter_order[i]);
-                    guess = MAX(MIN(guess, cpuinfo->total_cpus), SAM_MIN_CONTEXTS);
-                    apps_sorted[j]->exploring = true;
-                    per_app_cpu_budget[j] = guess;
-                    printf("HILL CLIMBING [APP %6d] random disturbance: %d -> %d\n", apps_sorted[j]->pid,
-                           curr_alloc_len, per_app_cpu_budget[j]);
-                  }
-                }
-              }
-              /* save performance history */
-              memcpy(apps_sorted[j]->perf_history[curr_alloc_len], history,
-                     sizeof apps_sorted[j]->perf_history[curr_alloc_len]);
-            } else if (!apps_sorted[j]->exploring && random() / (double)RAND_MAX <= SAM_DISTURB_PROB) {
-              /* Introduce random disturbances.
-						    */
-              int guess = per_app_cpu_budget[j] + guess_optimization(per_app_cpu_budget[j], counter_order[i]);
-              guess = MAX(MIN(guess, cpuinfo->total_cpus), SAM_MIN_CONTEXTS);
-              apps_sorted[j]->exploring = true;
-              per_app_cpu_budget[j] = guess;
-              printf("HILL CLIMBING [APP %6d] random disturbance: %d -> %d\n", apps_sorted[j]->pid, curr_alloc_len,
-                     per_app_cpu_budget[j]);
-            }
-          } else {
-            /* If this app has never been given an allocation, the first allocation we should
-			     * give it is the fair share.  */
-
-            per_app_cpu_budget[j] = fair_share;
-            printf("HILL CLIMBING [APP %6d] setting fair share \n", apps_sorted[j]->pid);
-          }
+          scheduler_policy_hillclimb(j, apps_sorted, per_app_cpu_budget,
+                  fair_share, curr_alloc_len, rem_cpus_sz, cpuinfo, i,
+                  counter_order);
 #else
-        /*
-         * If this app has already been given an allocation, then we can compute history
-         * and excess cores.
-         */
-        if (apps_sorted[j]->times_allocated > SAM_INITIAL_ALLOCS) {
-          /* compute performance history */
-          uint64_t history[2];
-          memcpy(history, apps_sorted[j]->perf_history[curr_alloc_len], sizeof history);
-          history[1]++;
-          history[0] = apps_sorted[j]->extra_metric[EXTRA_METRIC_IPS] * (1 / (double)history[1]) +
-                       history[0] * ((history[1] - 1) / (double)history[1]);
-
-          /*
-           * Change application's fair share count if the creation of new applications
-           * changes the fair share.
-           */
-          if (apps_sorted[j]->curr_fair_share != fair_share && apps_sorted[j]->perf_history[fair_share] != 0)
-            apps_sorted[j]->curr_fair_share = fair_share;
-
-          uint64_t curr_perf = history[0];
-
-          if (apps_sorted[j]->times_allocated > 1) {
-            /*
-               * Compare current performance with previous performance, if this application
-               * has at least two items in history.
-               */
-            int prev_alloc_len = CPU_COUNT_S(rem_cpus_sz, apps_sorted[j]->cpuset[1]);
-            uint64_t prev_perf = apps_sorted[j]->perf_history[prev_alloc_len][0];
-
-            /*
-               * Original decision making:
-               * Change requested resources.
-               */
-            if (curr_perf > prev_perf && (curr_perf - prev_perf) / (double)prev_perf >= SAM_PERF_THRESH &&
-                apps_sorted[j]->exploring && (prev_alloc_len != curr_alloc_len)) {
-              /* Keep going in the same direction. */
-              printf("[APP %6d] continuing in same direction \n", apps_sorted[j]->pid);
-              if (prev_alloc_len < curr_alloc_len)
-                per_app_cpu_budget[j] =
-                  MIN(per_app_cpu_budget[j] + determine_step_size(counter_order[i], curr_alloc_len, 1),
-                      cpuinfo->total_cpus);
-              else
-                per_app_cpu_budget[j] = MAX(
-                  per_app_cpu_budget[j] - determine_step_size(counter_order[i], curr_alloc_len, -1), SAM_MIN_CONTEXTS);
-              if (prev_alloc_len == 0 && per_app_cpu_budget[j] == cpuinfo->total_cpus)
-                apps_sorted[j]->exploring = false;
-            } else {
-              if (curr_perf < prev_perf && (prev_perf - curr_perf) / (double)prev_perf >= SAM_PERF_THRESH &&
-                  (prev_alloc_len != curr_alloc_len)) {
-                if (apps_sorted[j]->exploring) {
-                  /*
-                     * Revert to previous count if performance reduction was great enough.
-                     */
-                  per_app_cpu_budget[j] = prev_alloc_len;
-                } else {
-                  int guess = per_app_cpu_budget[j] + guess_optimization(per_app_cpu_budget[j], counter_order[i]);
-                  guess = MAX(MIN(guess, cpuinfo->total_cpus), SAM_MIN_CONTEXTS);
-                  apps_sorted[j]->exploring = true;
-                  per_app_cpu_budget[j] = guess;
-                }
-                printf("[APP %6d] exploring %d -> %d\n", apps_sorted[j]->pid, curr_alloc_len, per_app_cpu_budget[j]);
-              } else {
-                apps_sorted[j]->exploring = false;
-                printf("[APP %6d] exploring no more \n", apps_sorted[j]->pid);
-                if (random() / (double)RAND_MAX <= SAM_DISTURB_PROB) {
-                  int guess = per_app_cpu_budget[j] + guess_optimization(per_app_cpu_budget[j], counter_order[i]);
-                  guess = MAX(MIN(guess, cpuinfo->total_cpus), SAM_MIN_CONTEXTS);
-                  apps_sorted[j]->exploring = true;
-                  per_app_cpu_budget[j] = guess;
-                  printf("[APP %6d] random disturbance: %d -> %d\n", apps_sorted[j]->pid, curr_alloc_len,
-                         per_app_cpu_budget[j]);
-                }
-              }
-            }
-
-            /* save performance history */
-            memcpy(apps_sorted[j]->perf_history[curr_alloc_len], history,
-                   sizeof apps_sorted[j]->perf_history[curr_alloc_len]);
-          } else if (!apps_sorted[j]->exploring && random() / (double)RAND_MAX <= SAM_DISTURB_PROB) {
-            /*
-             * Introduce random disturbances.
-             */
-            int guess = per_app_cpu_budget[j] + guess_optimization(per_app_cpu_budget[j], counter_order[i]);
-            guess = MAX(MIN(guess, cpuinfo->total_cpus), SAM_MIN_CONTEXTS);
-            apps_sorted[j]->exploring = true;
-            per_app_cpu_budget[j] = guess;
-            printf("[APP %6d] random disturbance: %d -> %d\n", apps_sorted[j]->pid, curr_alloc_len,
-                   per_app_cpu_budget[j]);
-          }
-        } else {
-          /*
-           * If this app has never been given an allocation, the first allocation we should 
-           * give it is the fair share.
-           */
-          per_app_cpu_budget[j] = fair_share;
-          printf("[APP %6d] setting fair share \n", apps_sorted[j]->pid);
-        }
+          scheduler_policy_default(j, apps_sorted, per_app_cpu_budget,
+                  fair_share, curr_alloc_len, rem_cpus_sz, cpuinfo, i,
+                  counter_order);
 #endif
           /* this really shouldn't be necessary, but it is for some reason
            * I can't explain at the moment

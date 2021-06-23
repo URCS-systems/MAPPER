@@ -5,11 +5,14 @@ all: samd sam-launch
 
 $(OBJDIR):
 	mkdir $@
+	mkdir $@/schedulers
 
 $(OBJDIR)/%.o: %.c $(OBJDIR)
 	$(CC) -c  $(CFLAGS) -std=gnu11 $< -o $@
 
-samd: mapper.cpp $(OBJDIR)/cpuinfo.o $(OBJDIR)/util.o $(OBJDIR)/budgets.o $(OBJDIR)/cgroup.o $(OBJDIR)/perfio.o
+SCHEDULERS=$(patsubst %.c,$(OBJDIR)/%.o,$(wildcard schedulers/*.c))
+
+samd: mapper.cpp $(OBJDIR)/cpuinfo.o $(OBJDIR)/util.o $(OBJDIR)/budgets.o $(OBJDIR)/cgroup.o $(OBJDIR)/perfio.o $(SCHEDULERS)
 	$(CC) $(CFLAGS) -std=gnu++11 $^ -o $@ -lstdc++ -lm -lrt
 
 sam-launch: $(OBJDIR)/launcher.o $(OBJDIR)/cgroup.o $(OBJDIR)/util.o
@@ -18,5 +21,6 @@ sam-launch: $(OBJDIR)/launcher.o $(OBJDIR)/cgroup.o $(OBJDIR)/util.o
 .PHONY: clean
 
 clean:
-	$(RM) samd sam-launch $(OBJDIR)/*.o
+	$(RM) samd sam-launch $(OBJDIR)/*.o $(OBJDIR)/schedulers/*.o
+	rmdir $(OBJDIR)/schedulers
 	rmdir $(OBJDIR)
