@@ -27,6 +27,8 @@ enum extra_metric {
     EXTRA_METRIC_REMOTE,
     EXTRA_METRIC_IpCOREpS,
     EXTRA_METRIC_IPS,
+    EXTRA_METRIC_DRAM_REQUESTS,
+    EXTRA_METRIC_LLC_MISSES,
     N_EXTRA_METRICS,
 };
 
@@ -139,6 +141,33 @@ struct appinfo {
   char OMPname[100];
   int OMPfd;
   int OMPvalid;
+
+  // NuPoCo:
+  bool needs_profiling;
 };
+
+/**
+ * Reverse comparison. Produces a sorted list from largest to smallest element.
+ */
+static inline int compare_apps_by_metric_desc(const void *a_ptr, const void *b_ptr, void *arg)
+{
+  const struct appinfo *a = *(struct appinfo *const *)a_ptr;
+  const struct appinfo *b = *(struct appinfo *const *)b_ptr;
+  int met = *(int *)arg;
+
+  return (int)((long)b->metric[met] - (long)a->metric[met]);
+}
+
+/**
+ * Reverse comparison. Produces a sorted list from largest to smallest element.
+ */
+static inline int compare_apps_by_extra_metric_desc(const void *a_ptr, const void *b_ptr, void *arg)
+{
+  const struct appinfo *a = *(struct appinfo *const *)a_ptr;
+  const struct appinfo *b = *(struct appinfo *const *)b_ptr;
+  int met = *(int *)arg;
+
+  return (int)((long)b->extra_metric[met] - (long)a->extra_metric[met]);
+}
 
 #endif

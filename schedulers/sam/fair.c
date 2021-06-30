@@ -1,11 +1,11 @@
-#include "../scheduler.h"
+#include "../sam.h"
 #include <stdio.h>
 
 void
-scheduler_policy_fair(const int         j,
-                      struct appinfo   *apps_sorted[],
-                      int               per_app_cpu_budget[],
-                      int               fair_share)
+sam_policy_fair(const int         j,
+                struct appinfo   *apps_sorted[],
+                int               per_app_cpu_budget[],
+                int               fair_share)
 {
     /*If application has already been sorted, then just check for adjusting fair share*/
     if (apps_sorted[j]->times_allocated > SAM_INITIAL_ALLOCS) {

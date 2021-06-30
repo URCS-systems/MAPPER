@@ -35,7 +35,7 @@ modules.builtin
 CVS
 
 sam-launch
-samd
+[a-zA-Z]*d
 PerTask
 
 #
@@ -64,3 +64,4 @@ GTAGS
 *.orig
 *~
 \#*#
+compile_commands.json

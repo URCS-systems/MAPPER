@@ -1,11 +1,11 @@
 #define _GNU_SOURCE
-#include "../scheduler.h"
+#include "../sam.h"
 #include <stdio.h>
 #include <string.h>
 #include <sched.h>
 #include <stdlib.h>
 
-#include "../util.h"
+#include "../../util.h"
 
 static inline int determine_step_size(const int cpus_per_socket, enum metric bottleneck, int curr_alloc, int dir)
 {
@@ -27,15 +27,15 @@ static inline int determine_step_size(const int cpus_per_socket, enum metric bot
 }
 
 void
-scheduler_policy_default(const int          j,
-                         struct appinfo    *apps_sorted[],
-                         int                per_app_cpu_budget[],
-                         const int          fair_share,
-                         const int          curr_alloc_len,
-                         const size_t       rem_cpus_sz,
-                         struct cpuinfo    *cpuinfo,
-                         const int          i,
-                         enum metric        counter_order[])
+sam_policy_default(const int                j,
+                   struct appinfo          *apps_sorted[],
+                   int                      per_app_cpu_budget[],
+                   const int                fair_share,
+                   const int                curr_alloc_len,
+                   const size_t             rem_cpus_sz,
+                   const struct cpuinfo    *cpuinfo,
+                   const int                i,
+                   const enum metric        counter_order[])
 {
     const int cpus_per_socket = cpuinfo->sockets[0].num_cpus;
 

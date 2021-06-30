@@ -24,10 +24,9 @@ cpu_truncate(cpu_set_t *cpuset, int num_cpus, int max_set)
     }
 }
 
-void
+static void
 budget_collocate(cpu_set_t *old_cpuset, cpu_set_t *new_cpuset,
-                 enum metric curr_bottleneck,
-                 enum metric prev_bottleneck,
+                 bool bottleneck_unchanged,
                  cpu_set_t *remaining_cpus, const size_t cpus_sz,
                  int per_app_cpu_budget,
                  int *per_app_socket_orders)
@@ -51,7 +50,7 @@ budget_collocate(cpu_set_t *old_cpuset, cpu_set_t *new_cpuset,
         i++;
     }
 
-    if (curr_bottleneck == prev_bottleneck) {
+    if (bottleneck_unchanged) {
         old_cpuset2 = CPU_ALLOC(cpuinfo->total_cpus);
         CPU_ZERO_S(cpus_sz, old_cpuset2);
 
@@ -84,8 +83,7 @@ budget_collocate(cpu_set_t *old_cpuset, cpu_set_t *new_cpuset,
 
 void
 budget_spread(cpu_set_t *old_cpuset, cpu_set_t *new_cpuset,
-              enum metric curr_bottleneck,
-              enum metric prev_bottleneck,
+              bool bottleneck_unchanged,
               cpu_set_t *remaining_cpus, const size_t cpus_sz,
               int per_app_cpu_budget,
               int *per_app_socket_orders)
@@ -123,7 +121,7 @@ budget_spread(cpu_set_t *old_cpuset, cpu_set_t *new_cpuset,
         socket_i = (socket_i + 1) % cpuinfo->num_sockets;
     }
 
-    if (curr_bottleneck == prev_bottleneck) {
+    if (bottleneck_unchanged) {
         old_cpuset2 = CPU_ALLOC(cpuinfo->total_cpus);
         CPU_ZERO_S(cpus_sz, old_cpuset2);
 
@@ -156,8 +154,7 @@ budget_spread(cpu_set_t *old_cpuset, cpu_set_t *new_cpuset,
 
 void
 budget_no_hyperthread(cpu_set_t *old_cpuset, cpu_set_t *new_cpuset,
-                      enum metric curr_bottleneck,
-                      enum metric prev_bottleneck,
+                      bool bottleneck_unchanged,
                       cpu_set_t *remaining_cpus, const size_t cpus_sz,
                       int per_app_cpu_budget,
                       int *per_app_socket_orders)
@@ -197,7 +194,7 @@ budget_no_hyperthread(cpu_set_t *old_cpuset, cpu_set_t *new_cpuset,
         i = (i + 1) % cpuinfo->num_sockets;
     }
 
-    if (curr_bottleneck == prev_bottleneck) {
+    if (bottleneck_unchanged) {
         old_cpuset2 = CPU_ALLOC(cpuinfo->total_cpus);
         CPU_ZERO_S(cpus_sz, old_cpuset2);
 
@@ -247,14 +244,13 @@ budget_no_hyperthread(cpu_set_t *old_cpuset, cpu_set_t *new_cpuset,
 
 void
 budget_default(cpu_set_t *old_cpuset, cpu_set_t *new_cpuset,
-               enum metric curr_bottleneck,
-               enum metric prev_bottleneck,
+               bool bottleneck_unchanged,
                cpu_set_t *remaining_cpus, const size_t cpus_sz,
                int per_app_cpu_budget,
                int *per_app_socket_orders)
 {
     budget_no_hyperthread(old_cpuset, new_cpuset,
-            curr_bottleneck, prev_bottleneck,
+            bottleneck_unchanged,
             remaining_cpus, cpus_sz,
             per_app_cpu_budget,
             per_app_socket_orders);

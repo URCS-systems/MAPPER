@@ -14,8 +14,7 @@ const struct cpu *get_cpu(int i) {
   char path[1024];
 
   info.tnumber = i;
-  snprintf(path, sizeof path, "/sys/devices/system/cpu/cpu%d/topology/core_id",
-           i);
+  snprintf(path, sizeof path, "/sys/devices/system/cpu/cpu%d/topology/core_id", i);
 
   if ((fp = fopen(path, "r"))) {
     fscanf(fp, "%d", &info.core_id);
@@ -45,6 +44,7 @@ struct cpuinfo *get_cpuinfo(void) {
   struct cpu cpus[MAX_CPUS];
   struct cpu_socket sockets[MAX_CPUS];
   int num_sockets = 0;
+  int num_cores = 0;
 
   if (nprocs > MAX_CPUS) {
     fprintf(stderr, "nprocs (%d) > MAX_CPUS (%d)\n", nprocs, MAX_CPUS);
@@ -64,16 +64,18 @@ struct cpuinfo *get_cpuinfo(void) {
     // int sock_cpus = sockets[cpus[i].sock_id].num_cpus;
     sockets[cpus[i].sock_id].num_cpus++;
     num_sockets = cpus[i].sock_id > num_sockets ? cpus[i].sock_id : num_sockets;
+    num_cores = cpus[i].core_id > num_cores ? cpus[i].core_id : num_cores;
   }
 
   num_sockets++;
+  num_cores++;
 
   struct cpuinfo *cpuinfo = (struct cpuinfo*) malloc(sizeof *cpuinfo);
 
   cpuinfo->sockets = (struct cpu_socket*) calloc(num_sockets, sizeof cpuinfo->sockets[0]);
   cpuinfo->num_sockets = num_sockets;
   cpuinfo->total_cpus = num_cpus;
-  cpuinfo->total_cores = num_cpus / 2; /* TODO */
+  cpuinfo->total_cores = num_cores;
 
   for (int i = 0; i < num_cpus; ++i) {
     if (cpuinfo->sockets[cpus[i].sock_id].cpus == NULL) {

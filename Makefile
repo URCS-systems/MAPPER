@@ -1,26 +1,51 @@
-CFLAGS=-Wall -Werror -Wformat=2 -Wno-unused-parameter -Wcast-qual -Wextra -g3 -ggdb3
+CFLAGS=-Wall -Werror -Wformat=2 -Wcast-qual -Wextra -g3 -ggdb3
 OBJDIR=obj
 
-all: samd sam-launch
+all: samd sam-faird sam-hillclimbd nupocod sam-launch
 
 $(OBJDIR):
 	mkdir $@
-	mkdir $@/schedulers
 
-$(OBJDIR)/%.o: %.c $(OBJDIR)
-	$(CC) -c  $(CFLAGS) -std=gnu11 $< -o $@
+$(OBJDIR)/schedulers: | $(OBJDIR)
+	mkdir $@
 
-SCHEDULERS=$(patsubst %.c,$(OBJDIR)/%.o,$(wildcard schedulers/*.c))
+$(OBJDIR)/schedulers/sam: | $(OBJDIR)/schedulers
+	mkdir $@
 
-samd: mapper.cpp $(OBJDIR)/cpuinfo.o $(OBJDIR)/util.o $(OBJDIR)/budgets.o $(OBJDIR)/cgroup.o $(OBJDIR)/perfio.o $(SCHEDULERS)
-	$(CC) $(CFLAGS) -std=gnu++11 $^ -o $@ -lstdc++ -lm -lrt
+$(OBJDIR)/schedulers/sam-fair.o: schedulers/sam.c | $(OBJDIR) $(OBJDIR)/schedulers $(OBJDIR)/schedulers/sam
+	$(CC) -c $(CFLAGS) -std=gnu11 -DFAIR $< -o $@
+
+$(OBJDIR)/schedulers/sam/fair.o: schedulers/sam/fair.c | $(OBJDIR) $(OBJDIR)/schedulers $(OBJDIR)/schedulers/sam
+	$(CC) -c $(CFLAGS) -std=gnu11 -DFAIR $< -o $@
+
+$(OBJDIR)/schedulers/sam-hillclimb.o: schedulers/sam.c | $(OBJDIR) $(OBJDIR)/schedulers $(OBJDIR)/schedulers/sam
+	$(CC) -c $(CFLAGS) -std=gnu11 -DHILL_CLIMBING $< -o $@
+
+$(OBJDIR)/schedulers/sam/hillclimb.o: schedulers/sam/hillclimb.c | $(OBJDIR) $(OBJDIR)/schedulers $(OBJDIR)/schedulers/sam
+	$(CC) -c $(CFLAGS) -std=gnu11 -DHILL_CLIMBING $< -o $@
+
+$(OBJDIR)/%.o: %.c | $(OBJDIR) $(OBJDIR)/schedulers $(OBJDIR)/schedulers/sam
+	$(CC) -c $(CFLAGS) -std=gnu11 $< -o $@
+
+samd: mapper.cpp $(OBJDIR)/cpuinfo.o $(OBJDIR)/util.o $(OBJDIR)/budgets.o $(OBJDIR)/cgroup.o $(OBJDIR)/perfio.o $(OBJDIR)/schedulers/sam.o $(OBJDIR)/schedulers/sam/default.o
+	$(CXX) $(CFLAGS) -std=c++11 $^ -o $@ -lrt
+
+sam-faird: mapper.cpp $(OBJDIR)/cpuinfo.o $(OBJDIR)/util.o $(OBJDIR)/budgets.o $(OBJDIR)/cgroup.o $(OBJDIR)/perfio.o $(OBJDIR)/schedulers/sam-fair.o $(OBJDIR)/schedulers/sam/fair.o
+	$(CXX) $(CFLAGS) -std=c++11 -DFAIR $^ -o $@ -lrt
+
+sam-hillclimbd: mapper.cpp $(OBJDIR)/cpuinfo.o $(OBJDIR)/util.o $(OBJDIR)/budgets.o $(OBJDIR)/cgroup.o $(OBJDIR)/perfio.o $(OBJDIR)/schedulers/sam-hillclimb.o $(OBJDIR)/schedulers/sam/hillclimb.o
+	$(CXX) $(CFLAGS) -std=c++11 -DHILL_CLIMBING $^ -o $@ -lrt
+
+nupocod: mapper.cpp $(OBJDIR)/cpuinfo.o $(OBJDIR)/util.o $(OBJDIR)/budgets.o $(OBJDIR)/cgroup.o $(OBJDIR)/perfio.o $(OBJDIR)/schedulers/nupoco.o
+	$(CXX) $(CFLAGS) -std=c++11 -DNUPOCO $^ -o $@ -lrt
 
 sam-launch: $(OBJDIR)/launcher.o $(OBJDIR)/cgroup.o $(OBJDIR)/util.o
-	$(CC) $(CFLAGS) -std=gnu11 $^ -o $@
+	$(CC) $(CFLAGS) $^ -o $@
 
 .PHONY: clean
 
-clean:
-	$(RM) samd sam-launch $(OBJDIR)/*.o $(OBJDIR)/schedulers/*.o
+clean: $(OBJDIR)
+	$(RM) samd sam-faird sam-hillclimbd nupocod sam-launch $(OBJDIR)/*.o $(OBJDIR)/schedulers/*.o $(OBJDIR)/schedulers/*/*.o
+	rmdir $(OBJDIR)/schedulers/sam
 	rmdir $(OBJDIR)/schedulers
 	rmdir $(OBJDIR)

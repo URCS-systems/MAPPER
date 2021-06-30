@@ -1,22 +1,22 @@
 #define _GNU_SOURCE
-#include "../scheduler.h"
+#include "../sam.h"
 #include <stdio.h>
 #include <string.h>
 #include <sched.h>
 #include <stdlib.h>
 
-#include "../util.h"
+#include "../../util.h"
 
 void
-scheduler_policy_hillclimb(const int        j,
-                           struct appinfo  *apps_sorted[],
-                           int              per_app_cpu_budget[],
-                           const int        fair_share,
-                           const int        curr_alloc_len,
-                           const size_t     rem_cpus_sz,
-                           struct cpuinfo  *cpuinfo,
-                           const int        i,
-                           enum metric      counter_order[])
+sam_policy_hillclimb(const int              j,
+                     struct appinfo        *apps_sorted[],
+                     int                    per_app_cpu_budget[],
+                     const int              fair_share,
+                     const int              curr_alloc_len,
+                     const size_t           rem_cpus_sz,
+                     const struct cpuinfo  *cpuinfo,
+                     const int              i,
+                     const enum metric      counter_order[])
 {
     const int cpus_per_socket = cpuinfo->sockets[0].num_cpus;
 
