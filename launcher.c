@@ -109,7 +109,6 @@ int main(int argc, char *argv[])
             wpid = waitpid(initial_pid, &status, WNOHANG);
             if (wpid == 0) {
                 if (waited < timeouttokill) {
-                    printf("Waiting %d second(s).\n", waited);
                     sleep(1);
                     waited++;
                 } else {
