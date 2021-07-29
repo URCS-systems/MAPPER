@@ -1,3 +1,5 @@
+### Notes
+
 1. The max CPUs an application should get, should be restricted to its active threads, which can be found in bottleneck[METRIC_ACTIVE]
 	The colocate must take advantage of this to colocate threads even when its just one application running with less than 20 threads. 
 2. Introduce the concept of fair share of CPUs for every application, to ensure an incoming application has the appropriate allocation.
@@ -9,3 +11,9 @@
 	So lets fix this for me. 
 5. Introduce notion of Instructions per second alongside of the current IPC. 
 6. Lot of garbage collection to be added at the end of the code. 
+
+### Cleanup
+
+- [ ] instructions in README
+- [x] split schedulers into different files/executables
+- [x] clean up code
