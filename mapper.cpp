@@ -464,7 +464,6 @@ int main()
   //Initialization and basic checks
   int init_error = 0;
 
-  size_t rem_cpus_sz;
   int pids_to_monitor_l = 0;
 
   setlocale(LC_ALL, "");
@@ -566,8 +565,6 @@ int main()
 
   while (!stoprun) {
     pid_t pids_to_monitor[8192];
-
-    cpu_set_t *remaining_cpus;
 
     /* get iteration start time */
     clock_gettime(CLOCK_MONOTONIC_RAW, &start_time);
@@ -698,9 +695,10 @@ int main()
       an->bin_direction = 1;
     }
 
+#if !defined(JUST_PERFMON)
     /* map applications */
-    remaining_cpus = CPU_ALLOC(cpuinfo->total_cpus);
-    rem_cpus_sz = CPU_ALLOC_SIZE(cpuinfo->total_cpus);
+    cpu_set_t *remaining_cpus = CPU_ALLOC(cpuinfo->total_cpus);
+    size_t rem_cpus_sz = CPU_ALLOC_SIZE(cpuinfo->total_cpus);
 
     CPU_ZERO_S(rem_cpus_sz, remaining_cpus);
     for (int i = 0; i < cpuinfo->total_cpus; ++i)
@@ -852,6 +850,7 @@ int main()
     }
 
     CPU_FREE(remaining_cpus);
+#endif
 
     /* reset app metrics and values */
     for (struct appinfo *an = apps_list; an; an = an->next) {
