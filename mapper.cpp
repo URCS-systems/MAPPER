@@ -56,6 +56,8 @@ int init_thresholds = 0;
 
 struct timespec start_time, finish_time;
 struct timespec perf_start, perf_finish;
+struct timespec sched_start, sched_finish;
+struct timespec cgroups_start, cgroups_finish;
 
 struct counter {
   double ratio;
@@ -705,6 +707,8 @@ int main()
       CPU_SET_S(i, rem_cpus_sz, remaining_cpus);
 
     if (num_apps > 0) {
+      clock_gettime(CLOCK_MONOTONIC_RAW, &sched_start);
+
       const float budget_f = cpuinfo->total_cpus / (float)num_apps;
       const int fair_share = MAX(floorf(budget_f), SAM_MIN_CONTEXTS);
       struct appinfo **apps_unsorted = (struct appinfo **)calloc(num_apps, sizeof *apps_unsorted);
@@ -768,6 +772,10 @@ int main()
                 remaining_cpus);
 #endif
 
+      clock_gettime(CLOCK_MONOTONIC_RAW, &sched_finish);
+
+
+      clock_gettime(CLOCK_MONOTONIC_RAW, &cgroups_start);
       /*
        * Iterate again. This time, apply the budgets.
        */
@@ -843,6 +851,8 @@ int main()
         }
       }
 
+      clock_gettime(CLOCK_MONOTONIC_RAW, &cgroups_finish);
+
       free(new_cpusets);
       free(apps_unsorted);
       free(apps_sorted);
@@ -850,7 +860,7 @@ int main()
     }
 
     CPU_FREE(remaining_cpus);
-#endif
+#endif  /* !defined(JUST_PERFMON) */
 
     /* reset app metrics and values */
     for (struct appinfo *an = apps_list; an; an = an->next) {
@@ -863,9 +873,24 @@ int main()
     /* get iteration finish time */
     clock_gettime(CLOCK_MONOTONIC_RAW, &finish_time);
 
-    printf("Elapsed time perf setup/start/stop/read: %.7f s, "
-           "total: %.7f s\n",
-           timespec_diff(&perf_start, &perf_finish), timespec_diff(&start_time, &finish_time));
+    printf("Elapsed time:\n"
+           "  perf (setup+start+stop+read): %.7f s\n"
+           "  scheduler: %.7f s\n"
+           "  cgroups: %.7f s\n"
+           "  total: %.7f s\n",
+           timespec_diff(&perf_start, &perf_finish),
+           timespec_diff(&sched_start, &sched_finish),
+           timespec_diff(&cgroups_start, &cgroups_finish),
+           timespec_diff(&start_time, &finish_time));
+
+    /* reset timespecs */
+    memset(&perf_start, 0, sizeof perf_start);
+    memset(&perf_finish, 0, sizeof perf_finish);
+    memset(&sched_start, 0, sizeof sched_finish);
+    memset(&sched_finish, 0, sizeof sched_finish);
+    memset(&cgroups_start, 0, sizeof cgroups_start);
+    memset(&cgroups_finish, 0, sizeof cgroups_finish);
+    memset(&start_time, 0, sizeof start_time);
   }
 
   printf("Stopping...\n");
