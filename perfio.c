@@ -168,7 +168,7 @@ void count_event_perfMultiplex(pid_t tid[], int index_tid)
 
 void displayTIDEvents(pid_t tid[], int index_tid)
 {
-    printf("CountEvents Index:%d\n", index_tid);
+    // printf("CountEvents Index:%d\n", index_tid);
 
     int i;
     for (i = 0; i < index_tid; i++) {

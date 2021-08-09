@@ -873,11 +873,11 @@ int main()
     /* get iteration finish time */
     clock_gettime(CLOCK_MONOTONIC_RAW, &finish_time);
 
-    printf("Elapsed time:\n"
-           "  perf (setup+start+stop+read): %.7f s\n"
-           "  scheduler: %.7f s\n"
-           "  cgroups: %.7f s\n"
-           "  total: %.7f s\n",
+    printf("Elapsed time (seconds):\n"
+           "  perf      %.7f\n"
+           "  scheduler %.7f\n"
+           "  cgroups   %.7f\n"
+           "  total     %.7f\n",
            timespec_diff(&perf_start, &perf_finish),
            timespec_diff(&sched_start, &sched_finish),
            timespec_diff(&cgroups_start, &cgroups_finish),
