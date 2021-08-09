@@ -36,6 +36,7 @@ CVS
 
 sam-launch
 [a-zA-Z]*d
+perfmon
 PerTask
 
 #
