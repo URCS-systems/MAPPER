@@ -36,6 +36,7 @@ struct perf_group event_groups[] = {
 };
 
 #define N_GROUPS (sizeof(event_groups) / sizeof(event_groups[0]))
+#define SLEEP_TIME_MS 1000 / N_GROUPS
 
 struct perf_stat *threads = NULL;
 //perf event open function calls
@@ -78,7 +79,17 @@ void start_event(int fd)
     }
 }
 
-//Stop event monitoring and read
+/**
+ * Stop monitoring the events and read their values.
+ *
+ * @fds = list of perf event file descriptors, with first fd being group leader
+ * @num_fds = number of file descriptors
+ * @ids = list of corresponding IDs; size is num_fds
+ * @valptrs = list of pointers to values to write perf counters into; size is num_fds
+ * 
+ * Note: each element of @ids is associated with an element of @valptrs, so that
+ * a perf event with an ID == @ids[i] means the value will be written into @valptrs[i].
+ */
 void stop_read_counters(const int fds[], size_t num_fds, const uint64_t ids[], uint64_t *valptrs[]) {
     if (num_fds < 1)
         return;
@@ -112,11 +123,10 @@ void stop_read_counters(const int fds[], size_t num_fds, const uint64_t ids[], u
 }
 
 //master function that orchestrates the entire performance monitoring for threads
-void count_event_perfMultiplex(pid_t tid[], int index_tid)
+void perfio_read_counters(pid_t tid[], int index_tid, struct timespec *remaining_time)
 {
     // Initialize time interval to count
-    int millisec = TIME_IN_MILLI_SEC;
-    struct timespec tim = { millisec / 1000, (millisec % 1000) * 1000000 };
+    struct timespec sleep_time = { SLEEP_TIME_MS / 1000, (SLEEP_TIME_MS % 1000) * 1000000 };
 
     threads = calloc(index_tid, sizeof *threads);
 
@@ -134,6 +144,7 @@ void count_event_perfMultiplex(pid_t tid[], int index_tid)
     }
     //start counters
 
+    struct timespec rem = { 0 };
     // duration of count
     //  nanosleep(&tim, NULL);
 
@@ -146,7 +157,12 @@ void count_event_perfMultiplex(pid_t tid[], int index_tid)
             start_event(threads[i].fd[event_groups[grp].items[0]]);
 
         // duration of count
-        nanosleep(&tim, NULL);
+        struct timespec rem_group = { 0 };
+        nanosleep(&sleep_time, &rem_group);
+        rem = (struct timespec) {
+            rem.tv_sec + rem_group.tv_sec,
+            rem.tv_nsec + rem_group.tv_nsec
+        };
 
         // stop counters and read counter values
         for (i = 0; i < index_tid; i++) {
@@ -164,6 +180,9 @@ void count_event_perfMultiplex(pid_t tid[], int index_tid)
             stop_read_counters(fds, event_groups[grp].size, ids, vps);
         }
     }
+
+    if (remaining_time)
+        *remaining_time = rem;
 }
 
 void displayTIDEvents(pid_t tid[], int index_tid)

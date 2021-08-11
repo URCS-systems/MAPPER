@@ -123,17 +123,3 @@ error:
     *length_in = 0;
     return -1;
 }
-
-double timespec_diff(const struct timespec *start, 
-                     const struct timespec *end) {
-    struct timespec diff_ts = *end;
-    if (diff_ts.tv_nsec < start->tv_nsec) {
-        diff_ts.tv_sec = diff_ts.tv_sec - start->tv_sec - 1;
-        diff_ts.tv_nsec = 1000000000 - (start->tv_nsec - diff_ts.tv_nsec);
-    } else {
-        diff_ts.tv_sec -= start->tv_sec;
-        diff_ts.tv_nsec -= start->tv_nsec;
-    }
-    return diff_ts.tv_sec + (double) diff_ts.tv_nsec / 1e+9;
-}
-

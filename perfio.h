@@ -47,9 +47,6 @@ enum perf_event {
     N_EVENTS,
 };
 
-#define TIME_IN_MILLI_SEC                                                                          \
-  500                // total measurement time per iteration is 2 times
-                       // TIME_IN_MILLI_SEC(example 500 millisecond *2 = 1 second)
 #define NUM_THREAD 500000 // Total Threads being monitored
 #define ITER 1         // Number of iterations
 
@@ -95,29 +92,15 @@ extern "C" {
 #endif
 
 extern const char *event_names[];
-extern uint64_t event_codes[];
-extern struct perf_group event_groups[];
-extern struct perf_stat *threads;
-
-void setPerfAttr(struct perf_event_attr *pea, enum perf_event event, int group_fd, int *fd, uint64_t *id,
-                 int cpu, pid_t tid);
-
-void start_event(int fd);
 
 /**
- * Stop monitoring the events and read their values.
+ * Read performance counters.
  *
- * @fds = list of perf event file descriptors, with first fd being group leader
- * @num_fds = number of file descriptors
- * @ids = list of corresponding IDs; size is num_fds
- * @valptrs = list of pointers to values to write perf counters into; size is num_fds
- * 
- * Note: each element of @ids is associated with an element of @valptrs, so that
- * a perf event with an ID == @ids[i] means the value will be written into @valptrs[i].
+ * @param remaining_time    (optional) if non-NULL, is filled with the extra
+ *                          time if nanosleep() exited early. This can be subtracted from the total time
+ *                          spent in this function.
  */
-void stop_read_counters(const int fds[], size_t num_fds, const uint64_t ids[], uint64_t *valptrs[]);
-
-void count_event_perfMultiplex(pid_t tid[], int index_tid);
+void perfio_read_counters(pid_t tid[], int index_tid, struct timespec *remaining_time);
 
 void displayTIDEvents(pid_t tid[], int index_tid);
 

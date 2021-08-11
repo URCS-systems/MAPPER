@@ -55,7 +55,7 @@ int ordernum = 0;
 int init_thresholds = 0;
 
 struct timespec start_time, finish_time;
-struct timespec perf_start, perf_finish;
+struct timespec perf_start, perf_finish, perf_unslept /* if sleep exited early */;
 struct timespec sched_start, sched_finish;
 struct timespec cgroups_start, cgroups_finish;
 
@@ -611,8 +611,7 @@ int main()
     }
 
     clock_gettime(CLOCK_MONOTONIC_RAW, &perf_start);
-    count_event_perfMultiplex(pids_to_monitor, pids_to_monitor_l);
-    clock_gettime(CLOCK_MONOTONIC_RAW, &perf_finish);
+    perfio_read_counters(pids_to_monitor, pids_to_monitor_l, &perf_unslept);
 
     // count for all tids for a particular interval of time
     displayTIDEvents(pids_to_monitor, pids_to_monitor_l); // required to copy values to my data structures
@@ -696,18 +695,19 @@ int main()
       an->bin_search_resource = BIN_INITIAL_RESOURCE;
       an->bin_direction = 1;
     }
+    clock_gettime(CLOCK_MONOTONIC_RAW, &perf_finish);
 
 #if !defined(JUST_PERFMON)
-    /* map applications */
-    cpu_set_t *remaining_cpus = CPU_ALLOC(cpuinfo->total_cpus);
-    size_t rem_cpus_sz = CPU_ALLOC_SIZE(cpuinfo->total_cpus);
-
-    CPU_ZERO_S(rem_cpus_sz, remaining_cpus);
-    for (int i = 0; i < cpuinfo->total_cpus; ++i)
-      CPU_SET_S(i, rem_cpus_sz, remaining_cpus);
-
     if (num_apps > 0) {
       clock_gettime(CLOCK_MONOTONIC_RAW, &sched_start);
+
+      /* map applications */
+      cpu_set_t *remaining_cpus = CPU_ALLOC(cpuinfo->total_cpus);
+      size_t rem_cpus_sz = CPU_ALLOC_SIZE(cpuinfo->total_cpus);
+
+      CPU_ZERO_S(rem_cpus_sz, remaining_cpus);
+      for (int i = 0; i < cpuinfo->total_cpus; ++i)
+        CPU_SET_S(i, rem_cpus_sz, remaining_cpus);
 
       const float budget_f = cpuinfo->total_cpus / (float)num_apps;
       const int fair_share = MAX(floorf(budget_f), SAM_MIN_CONTEXTS);
@@ -771,9 +771,6 @@ int main()
                 counter_order, per_app_socket_orders, new_cpusets,
                 remaining_cpus);
 #endif
-
-      clock_gettime(CLOCK_MONOTONIC_RAW, &sched_finish);
-
 
       clock_gettime(CLOCK_MONOTONIC_RAW, &cgroups_start);
       /*
@@ -857,9 +854,11 @@ int main()
       free(apps_unsorted);
       free(apps_sorted);
       free(per_app_socket_orders);
+      CPU_FREE(remaining_cpus);
+
+      clock_gettime(CLOCK_MONOTONIC_RAW, &sched_finish);
     }
 
-    CPU_FREE(remaining_cpus);
 #endif  /* !defined(JUST_PERFMON) */
 
     /* reset app metrics and values */
@@ -873,19 +872,24 @@ int main()
     /* get iteration finish time */
     clock_gettime(CLOCK_MONOTONIC_RAW, &finish_time);
 
+    double slept_time = 1 - (perf_unslept.tv_sec + (double)perf_unslept.tv_nsec / 1e9);
+    double cgroups_time = timespec_diff(cgroups_start, cgroups_finish);
     printf("Elapsed time (seconds):\n"
+           "  sleep     %.7f\n"
            "  perf      %.7f\n"
            "  scheduler %.7f\n"
            "  cgroups   %.7f\n"
            "  total     %.7f\n",
-           timespec_diff(&perf_start, &perf_finish),
-           timespec_diff(&sched_start, &sched_finish),
-           timespec_diff(&cgroups_start, &cgroups_finish),
-           timespec_diff(&start_time, &finish_time));
+           slept_time,
+           timespec_diff(perf_start, perf_finish) - slept_time,
+           timespec_diff(sched_start, sched_finish) - cgroups_time,
+           cgroups_time,
+           timespec_diff(start_time, finish_time));
 
     /* reset timespecs */
     memset(&perf_start, 0, sizeof perf_start);
     memset(&perf_finish, 0, sizeof perf_finish);
+    memset(&perf_unslept, 0, sizeof perf_unslept);
     memset(&sched_start, 0, sizeof sched_finish);
     memset(&sched_finish, 0, sizeof sched_finish);
     memset(&cgroups_start, 0, sizeof cgroups_start);
