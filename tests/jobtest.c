@@ -454,7 +454,7 @@ int test_joblist(const char *filename, FILE *input, FILE *csv, bool write_header
         double elapsed;
 
         clock_gettime(CLOCK_MONOTONIC_RAW, &cur);
-        elapsed = timespec_diff(&start, &cur);
+        elapsed = timespec_diff(start, cur);
 
         if (!jb)
             /* this isn't a job */
@@ -474,7 +474,7 @@ int test_joblist(const char *filename, FILE *input, FILE *csv, bool write_header
             double parsed_time = 0;
 
             /* compute (running) average runtime */
-            parsed_time = timespec_diff(&jb->start, &jb->end);
+            parsed_time = timespec_diff(jb->start, jb->end);
             jb->avg_time = (jb->avg_time * jb->successful_runs + parsed_time) / (jb->successful_runs + 1);
 
             /* compute parsed time */
@@ -551,7 +551,7 @@ int test_joblist(const char *filename, FILE *input, FILE *csv, bool write_header
                 jb->successful_runs, str);
     }
 
-    double duration = timespec_diff(&start, &end);
+    double duration = timespec_diff(start, end);
 
     printf("Total changes: %10d, Total cpuset changes: %10d, Total job time: %10lf, Test duration: %10lf\n",
             total_context_changes, total_cpuset_changes, total_runtime, duration);

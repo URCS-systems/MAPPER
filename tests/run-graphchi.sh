@@ -1,5 +1,5 @@
 #!/bin/sh
-GRAPHCHI_DIR=~/Documents/summer2018-research/graphchi-cpp   # change this
+source ./include.sh
 
 cd $GRAPHCHI_DIR
 exec env GRAPHCHI_DIR=$GRAPHCHI_DIR $@

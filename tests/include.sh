@@ -1,1 +1,1 @@
-export GRAPHCHI_DIR=~/Documents/summer2018-research/graphchi-cpp
+export GRAPHCHI_DIR=~pferro/Documents/summer2018-research/graphchi-cpp
