@@ -3,6 +3,7 @@
  */
 //Header file contains description of data structures used and the events
 #include "perfio.h"
+#include "util.h"
 #include <stdbool.h>
 #include <assert.h>
 #include <errno.h>
@@ -123,14 +124,26 @@ void stop_read_counters(const int fds[], size_t num_fds, const uint64_t ids[], u
 }
 
 //master function that orchestrates the entire performance monitoring for threads
-void perfio_read_counters(pid_t tid[], int index_tid, struct timespec *remaining_time)
+void perfio_read_counters(pid_t            tid[],
+                          int              index_tid,
+                          struct timespec *slept_time,
+                          struct timespec *setup_time,
+                          struct timespec *read_time)
 {
     // Initialize time interval to count
-    struct timespec sleep_time = { SLEEP_TIME_MS / 1000, (SLEEP_TIME_MS % 1000) * 1000000 };
+    struct timespec sleep_ts = { SLEEP_TIME_MS / 1000, (SLEEP_TIME_MS % 1000) * 1000000 };
+    struct timespec slept_ts = { 0 };
+    struct timespec setup_start,
+                    setup_end,
+                    setup_ts = { 0 };
+    struct timespec read_start,
+                    read_end,
+                    read_ts = { 0 };
 
     threads = calloc(index_tid, sizeof *threads);
 
     // iterate through all threads
+    clock_gettime(CLOCK_MONOTONIC_RAW, &setup_start);
     int i;
     for (i = 0; i < index_tid; i++) {
         // set up performance counters
@@ -142,9 +155,10 @@ void perfio_read_counters(pid_t tid[], int index_tid, struct timespec *remaining
             }
         }
     }
+    clock_gettime(CLOCK_MONOTONIC_RAW, &setup_end);
+    timespec_add(setup_ts, timespec_sub(setup_end, setup_start));
     //start counters
 
-    struct timespec rem = { 0 };
     // duration of count
     //  nanosleep(&tim, NULL);
 
@@ -153,18 +167,21 @@ void perfio_read_counters(pid_t tid[], int index_tid, struct timespec *remaining
     for (grp = 0; grp < N_GROUPS; grp++) {
         int i; 
 
+        setup_start = (struct timespec) { 0 };
+        setup_end = (struct timespec) { 0 };
+        clock_gettime(CLOCK_MONOTONIC_RAW, &setup_start);
         for (i = 0; i < index_tid; i++)
             start_event(threads[i].fd[event_groups[grp].items[0]]);
+        clock_gettime(CLOCK_MONOTONIC_RAW, &setup_end);
+        setup_ts = timespec_add(setup_ts, timespec_sub(setup_end, setup_start));
 
         // duration of count
         struct timespec rem_group = { 0 };
-        nanosleep(&sleep_time, &rem_group);
-        rem = (struct timespec) {
-            rem.tv_sec + rem_group.tv_sec,
-            rem.tv_nsec + rem_group.tv_nsec
-        };
+        nanosleep(&sleep_ts, &rem_group);
+        slept_ts = timespec_add(slept_ts, timespec_sub(sleep_ts, rem_group));
 
         // stop counters and read counter values
+        clock_gettime(CLOCK_MONOTONIC_RAW, &read_start);
         for (i = 0; i < index_tid; i++) {
             int fds[MAX_EVENT_GROUP_SZ];
             uint64_t ids[MAX_EVENT_GROUP_SZ];
@@ -179,10 +196,16 @@ void perfio_read_counters(pid_t tid[], int index_tid, struct timespec *remaining
 
             stop_read_counters(fds, event_groups[grp].size, ids, vps);
         }
+        clock_gettime(CLOCK_MONOTONIC_RAW, &read_end);
+        read_ts = timespec_add(read_ts, timespec_sub(read_end, read_start));
     }
 
-    if (remaining_time)
-        *remaining_time = rem;
+    if (slept_time)
+        *slept_time = slept_ts;
+    if (setup_time)
+        *setup_time = setup_ts;
+    if (read_time)
+        *read_time = read_ts;
 }
 
 void displayTIDEvents(pid_t tid[], int index_tid)

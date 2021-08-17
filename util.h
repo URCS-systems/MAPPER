@@ -35,16 +35,28 @@ void intlist_to_cpuset(const int *list,
 int string_to_intlist(const char *str, 
                       int **value_in, size_t *length_in);
 
-static inline double timespec_diff(struct timespec start, struct timespec end) {
-    struct timespec diff_ts = end;
-    if (diff_ts.tv_nsec < start.tv_nsec) {
-        diff_ts.tv_sec = diff_ts.tv_sec - start.tv_sec - 1;
-        diff_ts.tv_nsec = 1000000000 - (start.tv_nsec - diff_ts.tv_nsec);
-    } else {
-        diff_ts.tv_sec -= start.tv_sec;
-        diff_ts.tv_nsec -= start.tv_nsec;
+static inline struct timespec timespec_sub(struct timespec ts1, struct timespec ts2) {
+    struct timespec diff = {
+        .tv_sec = ts1.tv_sec - ts2.tv_sec,
+        .tv_nsec = ts1.tv_nsec - ts2.tv_nsec
+    };
+    if (ts1.tv_nsec < ts2.tv_nsec) {
+        diff.tv_sec -= 1;
+        diff.tv_nsec = 1000000000 - diff.tv_nsec;
     }
-    return diff_ts.tv_sec + (double) diff_ts.tv_nsec / 1e+9;
+    return diff;
+}
+
+static inline struct timespec timespec_add(struct timespec ts1, struct timespec ts2) {
+    return (struct timespec) {
+        .tv_sec = ts1.tv_sec + ts2.tv_sec + (ts1.tv_nsec + ts2.tv_nsec) / 1000000000,
+        .tv_nsec = (ts1.tv_nsec + ts2.tv_nsec) % 1000000000
+    };
+}
+
+static inline double timespec_to_secs(struct timespec ts)
+{
+    return ts.tv_sec + (double) ts.tv_nsec / 1e+9;
 }
 
 #if defined(__cplusplus)

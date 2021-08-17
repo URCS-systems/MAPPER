@@ -6,12 +6,14 @@ BEGIN {
     FS="\n"
 }
 
-$3 > 0 {                            # only process records where the scheduler was running
-    sums["sleep"    ]+=log($1)
-    sums["perf"     ]+=log($2)
-    sums["scheduler"]+=log($3)
-    sums["cgroups"  ]+=log($4)
-    sums["total"    ]+=log($5)
+$5 > 0 {                            # only process records when the schduler was running
+    sums["sleep"     ]+=log($1)
+    sums["perf"      ]+=log($2)
+    sums["perf setup"]+=log($3)
+    sums["perf read" ]+=log($4)
+    sums["scheduler" ]+=log($5)
+    sums["cgroups"   ]+=log($6)
+    sums["total"     ]+=log($7)
     processed++
 }
 
@@ -20,6 +22,8 @@ END {
         print "Elapsed time (geomean seconds):"
         print "  sleep     " exp(sums["sleep"]/processed)
         print "  perf      " exp(sums["perf"]/processed)
+        print "    setup   " exp(sums["perf setup"]/processed)
+        print "    read    " exp(sums["perf read"]/processed)
         print "  scheduler " exp(sums["scheduler"]/processed)
         print "  cgroups   " exp(sums["cgroups"]/processed)
         print "  total     " exp(sums["total"]/processed)

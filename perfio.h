@@ -96,11 +96,16 @@ extern const char *event_names[];
 /**
  * Read performance counters.
  *
- * @param remaining_time    (optional) if non-NULL, is filled with the extra
- *                          time if nanosleep() exited early. This can be subtracted from the total time
- *                          spent in this function.
+ *
+ * @param slept_time        (optional) if non-NULL, is filled with the time spent sleeping
+ * @param setup_time        (optional) if non-NULL, is filled with the time it takes to setup counters
+ * @param read_time         (optional) if non-NULL, is filled with the time it takes to read counters
  */
-void perfio_read_counters(pid_t tid[], int index_tid, struct timespec *remaining_time);
+void perfio_read_counters(pid_t            tid[],
+                          int              index_tid,
+                          struct timespec *slept_time,
+                          struct timespec *setup_time,
+                          struct timespec *read_time);
 
 void displayTIDEvents(pid_t tid[], int index_tid);
 

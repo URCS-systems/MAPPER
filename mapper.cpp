@@ -55,7 +55,10 @@ int ordernum = 0;
 int init_thresholds = 0;
 
 struct timespec start_time, finish_time;
-struct timespec perf_start, perf_finish, perf_unslept /* if sleep exited early */;
+struct timespec perf_start, perf_finish,
+                perf_sleep,     /* time spent sleeping */
+                perf_setup,     /* time spent setting up counters */
+                perf_read       /* time spent reading counters */;
 struct timespec sched_start, sched_finish;
 struct timespec cgroups_start, cgroups_finish;
 
@@ -611,7 +614,7 @@ int main()
     }
 
     clock_gettime(CLOCK_MONOTONIC_RAW, &perf_start);
-    perfio_read_counters(pids_to_monitor, pids_to_monitor_l, &perf_unslept);
+    perfio_read_counters(pids_to_monitor, pids_to_monitor_l, &perf_sleep, &perf_setup, &perf_read);
 
     // count for all tids for a particular interval of time
     displayTIDEvents(pids_to_monitor, pids_to_monitor_l); // required to copy values to my data structures
@@ -872,24 +875,29 @@ int main()
     /* get iteration finish time */
     clock_gettime(CLOCK_MONOTONIC_RAW, &finish_time);
 
-    double slept_time = 1 - (perf_unslept.tv_sec + (double)perf_unslept.tv_nsec / 1e9);
-    double cgroups_time = timespec_diff(cgroups_start, cgroups_finish);
+    double cgroups_time = timespec_to_secs(timespec_sub(cgroups_finish, cgroups_start));
     printf("Elapsed time (seconds):\n"
            "  sleep     %.7f\n"
            "  perf      %.7f\n"
+           "    setup   %.7f\n"
+           "    read    %.7f\n"
            "  scheduler %.7f\n"
            "  cgroups   %.7f\n"
            "  total     %.7f\n",
-           slept_time,
-           timespec_diff(perf_start, perf_finish) - slept_time,
-           timespec_diff(sched_start, sched_finish) - cgroups_time,
+           timespec_to_secs(perf_sleep),
+           timespec_to_secs(timespec_sub(timespec_sub(perf_finish, perf_start), perf_sleep)),
+           timespec_to_secs(perf_setup),
+           timespec_to_secs(perf_read),
+           timespec_to_secs(timespec_sub(sched_finish, sched_start)) - cgroups_time,
            cgroups_time,
-           timespec_diff(start_time, finish_time));
+           timespec_to_secs(timespec_sub(finish_time, start_time)));
 
     /* reset timespecs */
     memset(&perf_start, 0, sizeof perf_start);
     memset(&perf_finish, 0, sizeof perf_finish);
-    memset(&perf_unslept, 0, sizeof perf_unslept);
+    memset(&perf_sleep, 0, sizeof perf_sleep);
+    memset(&perf_setup, 0, sizeof perf_setup);
+    memset(&perf_read, 0, sizeof perf_read);
     memset(&sched_start, 0, sizeof sched_finish);
     memset(&sched_finish, 0, sizeof sched_finish);
     memset(&cgroups_start, 0, sizeof cgroups_start);
