@@ -8,8 +8,8 @@ if (( $UID != 0 )); then
 fi
 
 source ./include.sh
-# nprocs=$(nproc)
-proc_seq=$(seq 4 4 ${nprocs:-40})
+nprocs=$(nproc)
+proc_seq=$(seq 10 10 $((${nprocs:-40} * 4)))
 project_dir=..
 N_GRAPHCHI=1
 
