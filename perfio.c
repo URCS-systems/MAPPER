@@ -156,7 +156,7 @@ void perfio_read_counters(pid_t            tid[],
         }
     }
     clock_gettime(CLOCK_MONOTONIC_RAW, &setup_end);
-    timespec_add(setup_ts, timespec_sub(setup_end, setup_start));
+    setup_ts = timespec_add(setup_ts, timespec_sub(setup_end, setup_start));
     //start counters
 
     // duration of count
