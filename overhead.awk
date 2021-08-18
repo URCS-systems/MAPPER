@@ -6,7 +6,8 @@ BEGIN {
     FS="\n"
 }
 
-$5 > 0 {                            # only process records when the schduler was running
+# only process records when scheduler was active and sleep was uninterrupted
+$5 > 0 && $1 == 1 {
     sums["sleep"     ]+=log($1)
     sums["perf"      ]+=log($2)
     sums["perf setup"]+=log($3)
