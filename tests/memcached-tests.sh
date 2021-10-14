@@ -1,5 +1,7 @@
 #!/bin/sh
 
+### Used to run the memcached tests
+
 if [ "$UID" -ne 0 ]; then
     echo "Run this script as root."
     exit 1

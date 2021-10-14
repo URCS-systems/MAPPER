@@ -1,9 +1,14 @@
 #!/bin/bash
 
+### Performs some cleanup on the directories containing the datasets used by
+### GraphChi benchmarks.
+
+source include.sh
+
 items=()
 
 for i in {1..6}; do
-    items+=($(echo ~/netflix$i/* | xargs -n1 echo))
+    items+=($(echo $GRAPHCHI_DIR/netflix$i/* | xargs -n1 echo))
 done
 
 for f in ${items[@]}; do

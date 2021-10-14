@@ -8,17 +8,16 @@ if (( $UID != 0 )); then
 fi
 
 source ./include.sh
-nprocs=$(nproc)
 proc_seq=$(seq 10 10 $((${nprocs:-40} * 4)))
 project_dir=..
-N_GRAPHCHI=1
+N_GRAPHCHI=1    # redefine
 
 for i in $(seq 1 $N_GRAPHCHI); do
-    mkdir -p ~/netflix$i/
-    # ln -s $graphchi_dir/smallnetflix_mm ~/netflix$i/
-    # ln -s $graphchi_dir/smallnetflix_mme ~/netflix$i/
-    ln -sf $GRAPHCHI_DIR/netflix_mm ~/netflix$i/
-    ln -sf $GRAPHCHI_DIR/netflix_mme ~/netflix$i/
+    mkdir -p "$GRAPHCHI_DIR/netflix$i/"
+    ln -sf "$GRAPHCHI_DIR/smallnetflix_mm" "$GRAPHCHI_DIR/netflix$i/"
+    ln -sf "$GRAPHCHI_DIR/smallnetflix_mme" "$GRAPHCHI_DIR/netflix$i/"
+    ln -sf "$GRAPHCHI_DIR/netflix_mm" "$GRAPHCHI_DIR/netflix$i/"
+    ln -sf "$GRAPHCHI_DIR/netflix_mme" "$GRAPHCHI_DIR/netflix$i/"
 done
 
 # create variants of the BSGD workload with threads from 2 to `nproc`

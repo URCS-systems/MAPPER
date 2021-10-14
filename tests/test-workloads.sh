@@ -1,5 +1,7 @@
 #!/bin/bash
 
+source include.sh
+
 if (( $# < 2 )); then
     echo "Usage: $0 scheduler-name num-apps-in-workload [num-runs]"
     exit 1
@@ -35,11 +37,11 @@ fi
 
 regex="$regex.txt\$"
 
-csvs=($(ls workloads/ | grep -E $regex | grep -v $anti_regex))
+csvs=($(ls $joblists_dir | grep -E $regex | grep -v $anti_regex))
 
 for fname in ${csvs[@]}; do
     if [ ! -e $results_dir/$num_apps/$scheduler_name/$fname.csv ]; then
-        echo "-f workloads/$fname"
+        echo "-f \"$joblists_dir/$fname\""
     fi
 done | xargs -t ./jobtest -n $num_runs
 

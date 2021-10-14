@@ -8,6 +8,10 @@ This is how you can test the workloads that appear in the MAPPER paper:
 2. `make jobtest`
 3. run `jobtest` on any of the workloads in `workloads/`
 
+### Running all workloads
+
+Follow steps 1-2 and then run `./test-workloads.sh`.
+
 ## Measuring scheduler performance
 
 This is how you can measure the overhead of the scheduler phases:

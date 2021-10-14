@@ -4,23 +4,27 @@
 
 source ./include.sh
 
-joblists_dir=./workloads # change this
-N_GRAPHCHI=6        # number of different graphchi applications
-nprocs=$(nproc)
-
-read -p "Remove ./workloads? (y/n)" remove_workloads
+read -p "Reset $joblists_dir? (y/N)" remove_workloads
 
 if [[ $remove_workloads == "y" ]]; then
     rm -rf $joblists_dir
     git checkout $joblists_dir
 fi
 
+if [ ! -d "$GRAPHCHI_DIR" ]; then
+    if ! which git 2>/dev/null; then
+        echo "Cannot download anything. Please install git"
+        exit 1
+    fi
+    git clone https://github.com/GraphChi/graphchi-cpp "$GRAPHCHI_DIR"
+fi
+
 for i in $(seq 1 $N_GRAPHCHI); do
-    mkdir -p ~/netflix$i/
-    # ln -s $graphchi_dir/smallnetflix_mm ~/netflix$i/
-    # ln -s $graphchi_dir/smallnetflix_mme ~/netflix$i/
-    ln -sf $GRAPHCHI_DIR/netflix_mm ~/netflix$i/
-    ln -sf $GRAPHCHI_DIR/netflix_mme ~/netflix$i/
+    mkdir -p "$GRAPHCHI_DIR/netflix$i/"
+    ln -sf "$GRAPHCHI_DIR/smallnetflix_mm" "$GRAPHCHI_DIR/netflix$i/"
+    ln -sf "$GRAPHCHI_DIR/smallnetflix_mme" "$GRAPHCHI_DIR/netflix$i/"
+    ln -sf "$GRAPHCHI_DIR/netflix_mm" "$GRAPHCHI_DIR/netflix$i/"
+    ln -sf "$GRAPHCHI_DIR/netflix_mme" "$GRAPHCHI_DIR/netflix$i/"
 done
 
 # setup for number of threads
