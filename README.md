@@ -35,7 +35,7 @@ These are the performance counter events MAPPER uses. They are taken from Intel'
 
 These events may also be present on later Intel generations.
 
-Manuals can be found at:https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
+Manuals can be found at: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
 
 Additional notes
 ----------------
