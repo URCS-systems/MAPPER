@@ -45,7 +45,9 @@ Can use commands like "lscpu" and "htop" to debug any abnormalities observed.
 Copyright Notice
 ----------------
 
-Copyright &copy; 2017 University of Rochester. All rights reserved.
+Copyright &copy; 2017-2021 University of Rochester. All rights reserved.
+
+Authors: Sharanyan Srikanthan, Sayak Chakraborti, Princeton Ferro, Sandhya Dwarkadas; Department of Computer Science
 
 MAPPER is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
