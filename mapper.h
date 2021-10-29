@@ -142,8 +142,7 @@ struct appinfo {
   int OMPfd;
   int OMPvalid;
 
-  // NuPoCo:
-  bool needs_profiling;
+  
 };
 
 /**
