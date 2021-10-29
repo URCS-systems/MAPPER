@@ -1,7 +1,7 @@
 CFLAGS=-Wall -Werror -Wformat=2 -Wcast-qual -Wextra -g3 -ggdb3
 OBJDIR=obj
 
-all: samd sam-faird sam-hillclimbd nupocod perfmon sam-launch
+all: samd sam-faird sam-hillclimbd perfmon sam-launch
 
 $(OBJDIR):
 	mkdir $@
@@ -35,9 +35,6 @@ sam-faird: mapper.cpp $(OBJDIR)/cpuinfo.o $(OBJDIR)/util.o $(OBJDIR)/budgets.o $
 
 sam-hillclimbd: mapper.cpp $(OBJDIR)/cpuinfo.o $(OBJDIR)/util.o $(OBJDIR)/budgets.o $(OBJDIR)/cgroup.o $(OBJDIR)/perfio.o $(OBJDIR)/schedulers/sam-hillclimb.o $(OBJDIR)/schedulers/sam/hillclimb.o
 	$(CXX) $(CFLAGS) -std=c++11 -DHILL_CLIMBING $^ -o $@ -lrt
-
-nupocod: mapper.cpp $(OBJDIR)/cpuinfo.o $(OBJDIR)/util.o $(OBJDIR)/budgets.o $(OBJDIR)/cgroup.o $(OBJDIR)/perfio.o $(OBJDIR)/schedulers/nupoco.o
-	$(CXX) $(CFLAGS) -std=c++11 -DNUPOCO $^ -o $@ -lrt
 
 perfmon: mapper.cpp $(OBJDIR)/cpuinfo.o $(OBJDIR)/util.o $(OBJDIR)/budgets.o $(OBJDIR)/cgroup.o $(OBJDIR)/perfio.o
 	$(CXX) $(CFLAGS) -std=c++11 -DJUST_PERFMON $^ -o $@ -lrt

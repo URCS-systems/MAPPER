@@ -33,11 +33,9 @@
 #include "util.h"
 #include "perfio.h"
 
-#ifdef NUPOCO
-#include "schedulers/nupoco.h"
-#else
+
 #include "schedulers/sam.h"
-#endif
+
 
 #define PRINT_BOTTLENECK false
 #define HILL_SUSPEND 5 //suspend for these many iterations when local optima found
@@ -250,9 +248,7 @@ static void unmanage(pid_t pid, pid_t app_pid)
 
     printf("Unmanaged application %d\n", app_pid);
 
-#ifdef NUPOCO
-    nupoco_set_profiling();
-#endif
+
 
     CPU_FREE(anode->cpuset[0]);
     CPU_FREE(anode->cpuset[1]);
@@ -766,14 +762,11 @@ int main()
         }
       }
 
-#ifdef NUPOCO
-        nupoco_allocate(num_apps, apps_sorted, cpuinfo, rem_cpus_sz, per_app_socket_orders, new_cpusets, remaining_cpus);
-#else
+
         sam_allocate(num_apps, apps_sorted, range_ends, cpuinfo, rem_cpus_sz,
                 initial_remaining_cpus, fair_share, num_counter_orders,
                 counter_order, per_app_socket_orders, new_cpusets,
                 remaining_cpus);
-#endif
 
       clock_gettime(CLOCK_MONOTONIC_RAW, &cgroups_start);
       /*
