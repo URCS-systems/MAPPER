@@ -44,6 +44,12 @@ The thresholds are defined as Macros in `mapper.cpp`
 SAM-MAP uses the architectural information available using the `lscpu` command to understand cores and sockets in the underlying system automatically.
 Can use commands like "lscpu" and "htop" to debug any abnormalities observed.
 
+
+Trouble Shooting
+----------------
+
+
+
 Copyright Notice
 ----------------
 
