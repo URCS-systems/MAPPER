@@ -1,0 +1,2 @@
+Some notes on OpenMP benchmark compilation after applying the patch to gcc
+-------------------------------------------------------------------------
