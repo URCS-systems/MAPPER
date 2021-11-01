@@ -48,11 +48,11 @@ Can use commands like "lscpu" and "htop" to debug any abnormalities observed.
 Trouble Shooting
 ----------------
 
-Setting higher ulimit size for users (file descriptors created may max out)::
+Setting higher ulimit size for users (file descriptors created may max out)(May occur when running certain benchmarks or otehrwise)::
 https://access.redhat.com/solutions/61334
 
-Check processes managed by MAPPER and cgroups
-/sys/fs/cgroup  and /proc/ to check MAPPER folders and might need to clear them for frequent reruns.
+Check processes managed by MAPPER and cgroups:
+/sys/fs/cgroup  and /proc/ to check MAPPER folders and might need to clear them for frequent reruns or abrupt termination of the MAPPER daemon (happens when daemon exits while a process was being managed)
 
 Copyright Notice
 ----------------
