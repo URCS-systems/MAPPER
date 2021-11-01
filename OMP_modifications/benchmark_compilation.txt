@@ -1,2 +1,25 @@
 Some notes on OpenMP benchmark compilation after applying the patch to gcc
--------------------------------------------------------------------------
+------------------------------------------------------------------------
+
+
+For example, say GCC_PATH  is your directory path to you gcc installation and GCC_FLAGS is the path to your libgomp,
+
+A manual comiplation will look like,
+
+$(GCC_PATH $(GCC_FLAGS) example.c -c -o example.o
+sudo $(GCC_PATH)/usr/local/gcc-8.1/bin/gcc-8.1 -g -fopenmp -O2 -static -L$(GCC_LIB)/usr/local/lib64/libgomp -lgomp example.o -o example -lgomp -lrt
+
+
+
+Modify Makefile,
+
+CC =$(GCC_PATH)/usr/local/gcc-8.1/bin/gcc-8.1
+CPP=$(GCC_PATH)/usr/local/gcc-8.1/bin/g++-8.1
+GOMP_PATH=$(GCC_PATH)/usr/local/gcc-8.1/lib64
+CC_FLAGS = -g -fopenmp -O2 -static -L$(GCC_FLAGS)/usr/local/lib64/libgomp -lgomp -lrt
+
+example:  example.o 
+        $(CC) $(CC_FLAGS) example.o -o example -lrt
+ 
+example.o: example.c
+        $(CC) $(CC_FLAGS) example.c -c
