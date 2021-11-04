@@ -40,6 +40,7 @@
 #define PRINT_BOTTLENECK false
 #define HILL_SUSPEND 5 //suspend for these many iterations when local optima found
 #define BIN_INITIAL_RESOURCE 12
+
 // Will be initialized anyway
 int num_counter_orders = 6;
 int random_seed = 0xFACE;

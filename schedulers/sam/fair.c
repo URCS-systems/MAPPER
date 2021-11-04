@@ -1,6 +1,7 @@
 #include "../sam.h"
 #include <stdio.h>
 
+
 void
 sam_policy_fair(const int         j,
                 struct appinfo   *apps_sorted[],

@@ -7,6 +7,7 @@
 #include <assert.h>
 #include <stdbool.h>
 
+
 extern struct cpuinfo *cpuinfo;
 
 static void

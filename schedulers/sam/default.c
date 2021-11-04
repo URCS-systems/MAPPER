@@ -7,6 +7,7 @@
 
 #include "../../util.h"
 
+
 static inline int determine_step_size(const int cpus_per_socket, enum metric bottleneck, int curr_alloc, int dir)
 {
   if (bottleneck == METRIC_INTER || bottleneck == METRIC_INTRA) {

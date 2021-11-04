@@ -51,6 +51,7 @@ enum extra_metric {
 #define SAM_INITIAL_ALLOCS 4 /* number of initial allocations before exploring */
 #define SAM_MIN_THREADS 4
 
+
 struct OMPdata {
   double progress;
   int valid_progress;
