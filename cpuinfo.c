@@ -8,6 +8,7 @@
 
 #define MAX_CPUS 1024
 
+
 const struct cpu *get_cpu(int i) {
   static struct cpu info;
   FILE *fp = NULL;

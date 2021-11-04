@@ -7,6 +7,7 @@
 
 #include "../../util.h"
 
+
 void
 sam_policy_hillclimb(const int              j,
                      struct appinfo        *apps_sorted[],

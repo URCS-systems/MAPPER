@@ -10,6 +10,7 @@
 extern "C" {
 #endif
 
+
 static inline int guess_optimization(const int cpus_per_socket, const int budget, enum metric bottleneck)
 {
   int f = random() / (double)RAND_MAX < 0.5 ? -1 : 1;

@@ -1,4 +1,5 @@
 CFLAGS=-Wall -Werror -Wformat=2 -Wcast-qual -Wextra -g3 -ggdb3
+
 OBJDIR=obj
 
 all: samd sam-faird sam-hillclimbd perfmon sam-launch
