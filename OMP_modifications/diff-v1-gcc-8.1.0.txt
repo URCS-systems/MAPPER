@@ -1,0 +1,1147 @@
+diff -ruN -x '*mpfr*' -x '*mpc*' -x '*isl*' -x configure -x '*.guess' -x '*boostrap*' -x '*.in*' -x '*.am' -x '*.pl' -x '*.sub' -x '*.m4' -x '*assert*' -x '*Change*' -x '*gmp*' gcc-8.1.0_original/gcc/omp-builtins.def ../gcc-8.1.0-sharan-11-7-2021-backup/gcc/omp-builtins.def
+--- gcc-8.1.0_original/gcc/omp-builtins.def	2021-11-07 20:04:57.265370169 -0500
++++ ../gcc-8.1.0-sharan-11-7-2021-backup/gcc/omp-builtins.def	2021-11-07 19:42:28.891078701 -0500
+@@ -59,6 +59,11 @@
+ 		  BT_FN_INT, ATTR_CONST_NOTHROW_LEAF_LIST)
+ DEF_GOMP_BUILTIN (BUILT_IN_OMP_GET_NUM_TEAMS, "omp_get_num_teams",
+ 		  BT_FN_INT, ATTR_CONST_NOTHROW_LEAF_LIST)
++DEF_GOMP_BUILTIN (BUILT_IN_OMP_GET_NUM_THREADS_SHAR, "omp_get_num_threads_shar",
++                  BT_FN_INT, ATTR_CONST_NOTHROW_LEAF_LIST)
++DEF_GOMP_BUILTIN (BUILT_IN_OMP_GET_FLAG_SHAR, "omp_get_flag_shar",
++                  BT_FN_INT, ATTR_CONST_NOTHROW_LEAF_LIST)
++
+ 
+ DEF_GOMP_BUILTIN (BUILT_IN_GOMP_ATOMIC_START, "GOMP_atomic_start",
+ 		  BT_FN_VOID, ATTR_NOTHROW_LEAF_LIST)
+diff -ruN -x '*mpfr*' -x '*mpc*' -x '*isl*' -x configure -x '*.guess' -x '*boostrap*' -x '*.in*' -x '*.am' -x '*.pl' -x '*.sub' -x '*.m4' -x '*assert*' -x '*Change*' -x '*gmp*' gcc-8.1.0_original/gcc/omp-expand.c ../gcc-8.1.0-sharan-11-7-2021-backup/gcc/omp-expand.c
+--- gcc-8.1.0_original/gcc/omp-expand.c	2021-11-07 20:04:57.226368623 -0500
++++ ../gcc-8.1.0-sharan-11-7-2021-backup/gcc/omp-expand.c	2021-11-07 19:42:28.789074628 -0500
+@@ -3265,7 +3265,7 @@
+ 			       struct omp_for_data *fd,
+ 			       gimple *inner_stmt)
+ {
+-  tree n, q, s0, e0, e, t, tt, nthreads, threadid;
++  tree n, q, s0, e0, e, t, tt, nthreads, threadid, fshar, sfshar;
+   tree type, itype, vmain, vback;
+   basic_block entry_bb, second_bb, third_bb, exit_bb, seq_start_bb;
+   basic_block body_bb, cont_bb, collapse_bb = NULL;
+@@ -3357,11 +3357,11 @@
+ 	}
+       gsi = gsi_last_bb (entry_bb);
+     }
+-
++  printf("In no chunk compile\n");
+   switch (gimple_omp_for_kind (fd->for_stmt))
+     {
+     case GF_OMP_FOR_KIND_FOR:
+-      nthreads = builtin_decl_explicit (BUILT_IN_OMP_GET_NUM_THREADS);
++      nthreads = builtin_decl_explicit (BUILT_IN_OMP_GET_NUM_THREADS_SHAR);
+       threadid = builtin_decl_explicit (BUILT_IN_OMP_GET_THREAD_NUM);
+       break;
+     case GF_OMP_FOR_KIND_DISTRIBUTE:
+@@ -3380,6 +3380,12 @@
+   threadid = force_gimple_operand_gsi (&gsi, threadid, true, NULL_TREE,
+ 				       true, GSI_SAME_STMT);
+ 
++	fshar = build_call_expr (builtin_decl_explicit (BUILT_IN_OMP_GET_FLAG_SHAR), 0);
++  fshar = fold_convert (itype, fshar);
++  fshar = force_gimple_operand_gsi (&gsi, fshar, true, NULL_TREE, 
++								 true, GSI_SAME_STMT);
++
++  // Shar right here
+   n1 = fd->loop.n1;
+   n2 = fd->loop.n2;
+   step = fd->loop.step;
+@@ -3448,6 +3454,10 @@
+ 
+   t = fold_build2 (PLUS_EXPR, itype, s0, q);
+   e0 = force_gimple_operand_gsi (&gsi, t, true, NULL_TREE, true, GSI_SAME_STMT);
++	
++	t = build2 (MULT_EXPR, itype, e0, fshar);
++	t = build2 (PLUS_EXPR, itype, t, s0);
++	s0 = force_gimple_operand_gsi (&gsi, t, true, NULL_TREE, true, GSI_SAME_STMT);
+ 
+   t = build2 (GE_EXPR, boolean_type_node, s0, e0);
+   gsi_insert_before (&gsi, gimple_build_cond_empty (t), GSI_SAME_STMT);
+@@ -3746,7 +3756,7 @@
+ 			     struct omp_for_data *fd, gimple *inner_stmt)
+ {
+   tree n, s0, e0, e, t;
+-  tree trip_var, trip_init, trip_main, trip_back, nthreads, threadid;
++  tree trip_var, trip_init, trip_main, trip_back, nthreads, threadid, fshar, nfshar;
+   tree type, itype, vmain, vback, vextra;
+   basic_block entry_bb, exit_bb, body_bb, seq_start_bb, iter_part_bb;
+   basic_block trip_update_bb = NULL, cont_bb, collapse_bb = NULL, fin_bb;
+@@ -3784,6 +3794,7 @@
+   gsi = gsi_last_nondebug_bb (entry_bb);
+   gcc_assert (gimple_code (gsi_stmt (gsi)) == GIMPLE_OMP_FOR);
+ 
++  printf(" In chunk\n");
+   if (fd->collapse > 1)
+     {
+       int first_zero_iter = -1, dummy = -1;
+@@ -3845,7 +3856,7 @@
+   switch (gimple_omp_for_kind (fd->for_stmt))
+     {
+     case GF_OMP_FOR_KIND_FOR:
+-      nthreads = builtin_decl_explicit (BUILT_IN_OMP_GET_NUM_THREADS);
++      nthreads = builtin_decl_explicit (BUILT_IN_OMP_GET_NUM_THREADS_SHAR);
+       threadid = builtin_decl_explicit (BUILT_IN_OMP_GET_THREAD_NUM);
+       break;
+     case GF_OMP_FOR_KIND_DISTRIBUTE:
+@@ -3864,6 +3875,11 @@
+   threadid = force_gimple_operand_gsi (&gsi, threadid, true, NULL_TREE,
+ 				       true, GSI_SAME_STMT);
+ 
++  fshar = build_call_expr (builtin_decl_explicit (BUILT_IN_OMP_GET_FLAG_SHAR), 0);
++  fshar = fold_convert (itype, fshar);
++  fshar = force_gimple_operand_gsi (&gsi, fshar, true, NULL_TREE,
++		  		       true, GSI_SAME_STMT);
++
+   n1 = fd->loop.n1;
+   n2 = fd->loop.n2;
+   step = fd->loop.step;
+@@ -3931,6 +3947,9 @@
+   vextra = force_gimple_operand_gsi (&gsi, t, true, NULL_TREE,
+ 				     true, GSI_SAME_STMT);
+ 
++  t = fold_build2 (MULT_EXPR, itype, n, fshar);
++  nfshar = force_gimple_operand_gsi (&gsi, t, true, NULL_TREE,
++                                        true, GSI_SAME_STMT);
+   /* Remove the GIMPLE_OMP_FOR.  */
+   gsi_remove (&gsi, true);
+ 
+@@ -3942,6 +3961,7 @@
+   t = fold_build2 (MULT_EXPR, itype, trip_main, nthreads);
+   t = fold_build2 (PLUS_EXPR, itype, t, threadid);
+   t = fold_build2 (MULT_EXPR, itype, t, chunk_size);
++  t = fold_build2 (PLUS_EXPR, itype, t, nfshar);
+   s0 = force_gimple_operand_gsi (&gsi, t, true, NULL_TREE,
+ 				 false, GSI_CONTINUE_LINKING);
+ 
+@@ -5630,6 +5650,7 @@
+   region->sched_kind = fd.sched_kind;
+   region->sched_modifiers = fd.sched_modifiers;
+ 
++  printf ("OpenMP Compile: expand_omp_for \n");
+   gcc_assert (EDGE_COUNT (region->entry->succs) == 2);
+   BRANCH_EDGE (region->entry)->flags &= ~EDGE_ABNORMAL;
+   FALLTHRU_EDGE (region->entry)->flags &= ~EDGE_ABNORMAL;
+@@ -5662,6 +5683,7 @@
+   else if (fd.sched_kind == OMP_CLAUSE_SCHEDULE_STATIC
+ 	   && !fd.have_ordered)
+     {
++      printf ("OpenMP Compile: static chunk nochunk region! \n");
+       if (fd.chunk_size == NULL)
+ 	expand_omp_for_static_nochunk (region, &fd, inner_stmt);
+       else
+@@ -5670,7 +5692,7 @@
+   else
+     {
+       int fn_index, start_ix, next_ix;
+-
++      printf ("Well we are here now! \n");
+       gcc_assert (gimple_omp_for_kind (fd.for_stmt)
+ 		  == GF_OMP_FOR_KIND_FOR);
+       if (fd.chunk_size == NULL
+diff -ruN -x '*mpfr*' -x '*mpc*' -x '*isl*' -x configure -x '*.guess' -x '*boostrap*' -x '*.in*' -x '*.am' -x '*.pl' -x '*.sub' -x '*.m4' -x '*assert*' -x '*Change*' -x '*gmp*' gcc-8.1.0_original/inst.sh ../gcc-8.1.0-sharan-11-7-2021-backup/inst.sh
+--- gcc-8.1.0_original/inst.sh	1969-12-31 19:00:00.000000000 -0500
++++ ../gcc-8.1.0-sharan-11-7-2021-backup/inst.sh	2021-11-07 19:42:27.402019243 -0500
+@@ -0,0 +1 @@
++sudo make DESTDIR=~/gcc8.1-install install
+diff -ruN -x '*mpfr*' -x '*mpc*' -x '*isl*' -x configure -x '*.guess' -x '*boostrap*' -x '*.in*' -x '*.am' -x '*.pl' -x '*.sub' -x '*.m4' -x '*assert*' -x '*Change*' -x '*gmp*' gcc-8.1.0_original/libgomp/cgroup_SAM.c ../gcc-8.1.0-sharan-11-7-2021-backup/libgomp/cgroup_SAM.c
+--- gcc-8.1.0_original/libgomp/cgroup_SAM.c	1969-12-31 19:00:00.000000000 -0500
++++ ../gcc-8.1.0-sharan-11-7-2021-backup/libgomp/cgroup_SAM.c	2021-11-07 19:42:27.165009779 -0500
+@@ -0,0 +1,245 @@
++#include "cgroup.h"
++#include <stdio.h>
++#include <string.h>
++#include <assert.h>
++#include <errno.h>
++#include <stdarg.h>
++#include <unistd.h>
++#include <sys/stat.h>
++#include <sys/types.h>
++#include <stdlib.h>
++
++#include "util.h"
++
++int cg_create_cgroup(const char *root,
++                     const char *controller,
++                     const char *path) {
++    char file_path[256];
++    snprintf(file_path, sizeof file_path, "%s/%s/%s", root, controller, path);
++
++    return mkdir(file_path, 01777);
++}
++
++int cg_remove_cgroup(const char *root,
++                     const char *controller,
++                     const char *path) {
++    char file_path[256];
++    snprintf(file_path, sizeof file_path, "%s/%s/%s", root, controller, path);
++
++    return rmdir(file_path);
++}
++
++int cg_write_intlist(const char *root,
++                     const char *controller,
++                     const char *path,
++                     const char *param,
++                     int *values, int length) {
++    char file_path[256];
++    snprintf(file_path, sizeof file_path, "%s/%s/%s/%s", root, controller, path, param);
++
++    FILE *fp = fopen(file_path, "w");
++    int err = 0;
++
++    if (!fp)
++        return -1;
++
++    char buf[8192];
++
++    intlist_to_string(values, length, buf, sizeof buf, ",");
++
++    if (fprintf(fp, "%s", buf) != (int) strlen(buf))
++        err = errno;
++
++    if (fclose(fp) < 0)
++        err = errno;
++
++    errno = err;
++    return errno ? -1 : 0;
++}
++
++int cg_write_string(const char *root, 
++                    const char *controller, 
++                    const char *path,
++                    const char *param, const char *fmt, ...) {
++    char file_path[256];
++    snprintf(file_path, sizeof file_path, "%s/%s/%s/%s", root, controller, path, param);
++    va_list args;
++
++    FILE *fp = fopen(file_path, "w");
++    int err = 0;
++
++    if (!fp)
++        return -1;
++
++    va_start(args, fmt);
++    if (vfprintf(fp, fmt, args) < 0)
++        err = errno;
++
++    va_end(args);
++    if (fclose(fp) < 0)
++        err = errno;
++
++    errno = err;
++    return errno ? -1 : 0;
++}
++
++int cg_write_bool(const char *root,
++                  const char *controller,
++                  const char *path,
++                  const char *param, bool value) {
++    char file_path[256];
++    snprintf(file_path, sizeof file_path, "%s/%s/%s/%s", root, controller, path, param);
++
++    FILE *fp = fopen(file_path, "w");
++    int err = 0;
++
++    if (!fp)
++        return -1;
++
++    if (fprintf(fp, "%d", value) < 0)
++        err = errno;
++
++    if (fclose(fp) < 0)
++        err = errno;
++
++    errno = err;
++    return errno ? -1 : 0;
++}
++
++int cg_read_int(const char *root,
++                const char *controller,
++                const char *path,
++                const char *param, int *value_in) {
++    char file_path[256];
++    snprintf(file_path, sizeof file_path, "%s/%s/%s/%s", root, controller, path, param);
++
++    FILE *fp = fopen(file_path, "r");
++    int err = 0;
++
++    if (!fp)
++        return -1;
++
++    if (fscanf(fp, "%d", value_in) < 1)
++        err = errno;
++
++    if (fclose(fp) < 0)
++        err = errno;
++
++    errno = err;
++    return errno ? -1 : 0;
++}
++
++int cg_read_string(const char *root,
++                   const char *controller,
++                   const char *path,
++                   const char *param, char **value_in) {
++    char file_path[256];
++    snprintf(file_path, sizeof file_path, "%s/%s/%s/%s", root, controller, path, param);
++
++    FILE *fp = fopen(file_path, "r");
++    int err = 0;
++
++    if (!fp)
++        return -1;
++
++    if (fscanf(fp, "%ms", value_in) < 1)
++        err = errno;
++
++    if (fclose(fp) < 0)
++        err = errno;
++
++    errno = err;
++    return errno ? -1 : 0;
++}
++
++int cg_read_intlist(const char *root,
++                    const char *controller,
++                    const char *path,
++                    const char *param, int **value_in, size_t *length_in) {
++    char file_path[256];
++    snprintf(file_path, sizeof file_path, "%s/%s/%s/%s", root, controller, path, param);
++
++    FILE *fp = fopen(file_path, "r");
++    int err = 0;
++    char *buf = NULL;
++
++    if (!fp)
++        return -1;
++
++    fscanf(fp, "%ms", &buf);
++
++    if (buf) {
++        size_t buflen = 2;
++        size_t length = 0;
++        char *p = NULL;
++        char *token = NULL;
++        const char *delim = NULL;
++
++        if (!(*value_in = (int*) realloc(*value_in, buflen * sizeof(**value_in))))
++            goto error;
++
++        /*
++         * Some cgroup parameters are newline-separated lists.
++         * Examples are /sys/fs/cgroup/cpuset/<cg>/tasks
++         * 12994
++         * 13094
++         * 13093
++         * 12234
++         *
++         * Others are comma-separated lists.
++         * Examples are /sys/fs/cgroup/cpuset/<cg>/cpuset.cpus
++         * In addition, parts of these lists may be abbreviated
++         * with hyphens:
++         * 0-3,5-9,13-15
++         *
++         * And some may be space-separated lists.
++         */
++
++        if (strchr(buf, ',') != NULL)
++            delim = ",";
++        else if (strchr(buf, ' ') != NULL)
++            delim = " ";
++        else
++            delim = "\n";
++
++        token = strtok_r(buf, delim, &p);
++        do {
++            if (length >= buflen) {
++                buflen *= 2;
++                if (!(*value_in = (int*) realloc(*value_in, buflen * sizeof(**value_in))))
++                    goto error;
++            }
++            int min, max;
++            if (sscanf(token, "%d-%d", &min, &max) == 2) {
++                for (int v=min; v<=max; ++v) {
++                    (*value_in)[length++] = v;
++                    if (length >= buflen) {
++                        buflen *= 2;
++                        if (!(*value_in = (int*) realloc(*value_in, buflen * sizeof(**value_in))))
++                            goto error;
++                    }
++                }
++            } else {
++                errno = 0;
++                long v = strtol(token, NULL, 10);
++                if (errno == 0)
++                    (*value_in)[length++] = v;
++            }
++        } while ((token = strtok_r(NULL, delim, &p)));
++
++        *value_in = (int*) realloc(*value_in, length * sizeof(**value_in));
++        *length_in = length;
++    } else {
++error:
++        err = errno;
++        *value_in = (int*) realloc(*value_in, 0);
++        *length_in = 0;
++    }
++
++    free(buf);
++    if (fclose(fp) < 0)
++        err = errno;
++    errno = err;
++    return errno ? -1 : 0;
++}
++
+diff -ruN -x '*mpfr*' -x '*mpc*' -x '*isl*' -x configure -x '*.guess' -x '*boostrap*' -x '*.in*' -x '*.am' -x '*.pl' -x '*.sub' -x '*.m4' -x '*assert*' -x '*Change*' -x '*gmp*' gcc-8.1.0_original/libgomp/cgroup_SAM.h ../gcc-8.1.0-sharan-11-7-2021-backup/libgomp/cgroup_SAM.h
+--- gcc-8.1.0_original/libgomp/cgroup_SAM.h	1969-12-31 19:00:00.000000000 -0500
++++ ../gcc-8.1.0-sharan-11-7-2021-backup/libgomp/cgroup_SAM.h	2021-11-07 19:42:27.150009180 -0500
+@@ -0,0 +1,55 @@
++#ifndef CGROUP_H
++#define CGROUP_H
++
++#include <stdbool.h>
++#include <stddef.h>
++
++#if defined(__cplusplus)
++extern "C" {
++#endif
++
++int cg_create_cgroup(const char *root,
++                     const char *controller,
++                     const char *path);
++
++int cg_remove_cgroup(const char *root,
++                     const char *controller,
++                     const char *path);
++
++int cg_write_intlist(const char *root,
++                     const char *controller,
++                     const char *path,
++                     const char *param,
++                     int *values, int length);
++
++__attribute__((format (printf, 5, 6)))
++int cg_write_string(const char *root, 
++                    const char *controller, 
++                    const char *path,
++                    const char *param, const char *fmt, ...);
++
++int cg_write_bool(const char *root,
++                  const char *controller,
++                  const char *path,
++                  const char *param, bool value);
++
++int cg_read_int(const char *root,
++                const char *controller,
++                const char *path,
++                const char *param, int *value_in);
++
++int cg_read_string(const char *root,
++                   const char *controller,
++                   const char *path,
++                   const char *param, char **value_in);
++
++int cg_read_intlist(const char *root,
++                    const char *controller,
++                    const char *path,
++                    const char *param, int **value_in, size_t *length_in);
++
++#if defined(__cplusplus)
++};
++#endif
++
++#endif
+diff -ruN -x '*mpfr*' -x '*mpc*' -x '*isl*' -x configure -x '*.guess' -x '*boostrap*' -x '*.in*' -x '*.am' -x '*.pl' -x '*.sub' -x '*.m4' -x '*assert*' -x '*Change*' -x '*gmp*' gcc-8.1.0_original/libgomp/config/linux/bar.c ../gcc-8.1.0-sharan-11-7-2021-backup/libgomp/config/linux/bar.c
+--- gcc-8.1.0_original/libgomp/config/linux/bar.c	2021-11-07 20:04:56.801351774 -0500
++++ ../gcc-8.1.0-sharan-11-7-2021-backup/libgomp/config/linux/bar.c	2021-11-07 19:42:27.169009939 -0500
+@@ -29,7 +29,7 @@
+ 
+ #include <limits.h>
+ #include "wait.h"
+-
++#include <stdio.h>
+ 
+ void
+ gomp_barrier_wait_end (gomp_barrier_t *bar, gomp_barrier_state_t state)
+@@ -83,7 +83,7 @@
+   unsigned int generation, gen;
+ 
+   if (__builtin_expect (state & BAR_WAS_LAST, 0))
+-    {
++  {
+       /* Next time we'll be awaiting TOTAL threads again.  */
+       struct gomp_thread *thr = gomp_thread ();
+       struct gomp_team *team = thr->ts.team;
+@@ -91,19 +91,23 @@
+       bar->awaited = bar->total;
+       team->work_share_cancelled = 0;
+       if (__builtin_expect (team->task_count, 0))
+-	{
+-	  gomp_barrier_handle_tasks (state);
+-	  state &= ~BAR_WAS_LAST;
+-	}
+-      else
+-	{
+-	  state &= ~BAR_CANCELLED;
+-	  state += BAR_INCR - BAR_WAS_LAST;
+-	  __atomic_store_n (&bar->generation, state, MEMMODEL_RELEASE);
+-	  futex_wake ((int *) &bar->generation, INT_MAX);
+-	  return;
+-	}
+-    }
++			{
++				gomp_barrier_handle_tasks (state);
++				state &= ~BAR_WAS_LAST;
++			}
++					else
++			{
++				state &= ~BAR_CANCELLED;
++				state += BAR_INCR - BAR_WAS_LAST;
++				__atomic_store_n (&bar->generation, state, MEMMODEL_RELEASE);
++			
++    		__atomic_store_n(&map_comp_flag, 0, MEMMODEL_RELEASE);;
++				__atomic_store_n(&map_comp_set, 0, MEMMODEL_RELEASE) ;
++				// printf("Release \n");
++				futex_wake ((int *) &bar->generation, INT_MAX);
++				return;
++			}
++  }
+ 
+   generation = state;
+   state &= ~BAR_CANCELLED;
+diff -ruN -x '*mpfr*' -x '*mpc*' -x '*isl*' -x configure -x '*.guess' -x '*boostrap*' -x '*.in*' -x '*.am' -x '*.pl' -x '*.sub' -x '*.m4' -x '*assert*' -x '*Change*' -x '*gmp*' gcc-8.1.0_original/libgomp/config_SAM.h ../gcc-8.1.0-sharan-11-7-2021-backup/libgomp/config_SAM.h
+--- gcc-8.1.0_original/libgomp/config_SAM.h	1969-12-31 19:00:00.000000000 -0500
++++ ../gcc-8.1.0-sharan-11-7-2021-backup/libgomp/config_SAM.h	2021-11-07 19:42:27.153009300 -0500
+@@ -0,0 +1,2 @@
++#define SAM_RUN_DIR     "/var/run/sam"
++#define SAM_CGROUP_NAME "sam"
+diff -ruN -x '*mpfr*' -x '*mpc*' -x '*isl*' -x configure -x '*.guess' -x '*boostrap*' -x '*.in*' -x '*.am' -x '*.pl' -x '*.sub' -x '*.m4' -x '*assert*' -x '*Change*' -x '*gmp*' gcc-8.1.0_original/libgomp/env.c ../gcc-8.1.0-sharan-11-7-2021-backup/libgomp/env.c
+--- gcc-8.1.0_original/libgomp/env.c	2021-11-07 20:04:56.798351655 -0500
++++ ../gcc-8.1.0-sharan-11-7-2021-backup/libgomp/env.c	2021-11-07 19:42:27.157009460 -0500
+@@ -29,7 +29,22 @@
+ #define _GNU_SOURCE
+ #include "libgomp.h"
+ #include "gomp-constants.h"
++#include "cgroup_SAM.h"
++#include "config_SAM.h"
++
+ #include <limits.h>
++#include <sys/shm.h>
++#include <sys/stat.h>
++#include <sys/mman.h>
++#include <fcntl.h>
++#include <sched.h>
++#include <sys/resource.h>
++#include <pthread.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#include <unistd.h>
++
+ #ifndef LIBGOMP_OFFLOADED_ONLY
+ #include "libgomp_f.h"
+ #include "oacc-int.h"
+@@ -61,6 +76,17 @@
+ 
+ #include "secure_getenv.h"
+ 
++/* Creating a new function similar to the existing set_num_threads()
++ * to be used for effecting changes relating to MAP */
++void map_set_num_threads (int n);
++
++/* Cgroup controller related paths */
++const char *cgroup_root = "/sys/fs/cgroup";
++const char *controller = "cpuset";
++char cg_name[512];
++pid_t initial_pid;
++int mapfd;
++
+ struct gomp_task_icv gomp_global_icv = {
+   .nthreads_var = 1,
+   .thread_limit_var = UINT_MAX,
+@@ -91,10 +117,66 @@
+ char *goacc_device_type;
+ int goacc_device_num;
+ 
++struct MAPdata
++{
++	double progress;
++	int valid_progress;
++	int numthreads;
++	int valid_threads;
++	int mode;
++} *MAPptr;
++
+ #ifndef LIBGOMP_OFFLOADED_ONLY
+ 
+ /* Parse the OMP_SCHEDULE environment variable.  */
+ 
++void *map_monitor()
++{
++	double pre_progress = 0;
++	double curr_progress = 0;
++	int mode_set = 0;
++	int i = 0;
++	do
++	{
++		if (MAPptr) {
++			if (mode_set == 0 && MAPptr->valid_threads) {
++				mode_set = 1;
++				map_mode = MAPptr->mode;
++				printf ("OMP Mode: %d \n", MAPptr->mode);
++			}
++			if (MAPptr->valid_threads && MAPptr->numthreads) {
++				*map_num_threads = MAPptr->numthreads;
++			}
++
++			if (MAPptr->valid_threads && MAPptr->numthreads == 0) {
++				printf("Num is 0. Not setting. \n");
++			}
++
++			if (MAPptr->valid_progress) {
++				MAPptr->progress = curr_progress - pre_progress;
++			}
++		}		
++		map_set_num_threads(*map_num_threads);
++
++		if (map_omp_specify != 0 || map_comp_flag == 0)
++      goto SLEEP_END;
++		
++		curr_progress = 0;
++		if (scale_add == 1) {
++			printf("Scale adding \n");
++			for (i = 0; i < MAX_CONTEXTS; i++)
++				curr_progress += map_progress[i * MAP_CACHE_PAD];
++
++			printf(" Curr %f Prev %f \n", curr_progress, pre_progress);
++			pre_progress = curr_progress;
++		}
++		
++		SLEEP_END:
++		usleep(500*1000);
++	}while(1);
++	pthread_exit(NULL);
++}
++
+ static void
+ parse_schedule (void)
+ {
+@@ -1054,6 +1136,115 @@
+   return false;
+ }
+ 
++void
++map_set_num_threads (int n)
++{
++  struct gomp_task_icv *icv = gomp_icv (true);
++  if (icv != NULL)
++        icv->nthreads_var = (n > 0 ? n : 1);
++  if (map_num_threads != NULL && icv != NULL)
++  {
++        *map_num_threads = icv->nthreads_var;
++        printf("Set num %lu \n", *map_num_threads);
++  }
++  else
++        printf("Null while setting num threads \n");
++  return;
++
++}
++
++/**
++	 * C++ version 0.4 char* style "itoa":
++	 * Written by Lukás Chmela
++	 * Released under GPLv3.
++
++	 */
++char* itoa(int value, char* result, int base) {
++	// check that the base if valid
++	if (base < 2 || base > 36) { *result = '\0'; return result; }
++
++	char* ptr = result, *ptr1 = result, tmp_char;
++	int tmp_value;
++
++	do {
++		tmp_value = value;
++		value /= base;
++		*ptr++ = "zyxwvutsrqponmlkjihgfedcba9876543210123456789abcdefghijklmnopqrstuvwxyz" [35 + (tmp_value - value * base)];
++	} while ( value );
++
++	// Apply negative sign
++	if (tmp_value < 0) *ptr++ = '-';
++	*ptr-- = '\0';
++	while(ptr1 < ptr) {
++		tmp_char = *ptr;
++		*ptr--= *ptr1;
++		*ptr1++ = tmp_char;
++	}
++	return result;
++}
++
++int map_create_control ()
++{
++  pthread_t sthread;
++  int rc;
++	char shmname[100];
++	
++	sprintf(shmname, "MAP-%d", getpid());
++
++  map_comp_flag = 0;
++	map_comp_set = 0;
++  map_comp_threads = 0;
++  map_progress = malloc(MAX_CONTEXTS * MAP_CACHE_PAD * sizeof(double));
++  map_prev = malloc(MAX_CONTEXTS * MAP_CACHE_PAD * sizeof(double));
++	map_num_threads = (unsigned long*) malloc(sizeof(unsigned long));
++  map_omp_specify = 0;
++	map_mode = 0;
++	scale_add = 0;
++  printf("In main: creating thread \n");
++	printf("My PID: %d, Parent PID %d, MAP shmname: |%s| \n", getpid(), getppid(), shmname);
++  *map_num_threads = gomp_global_icv.nthreads_var;
++
++	mapfd = shm_open (shmname, O_CREAT | O_RDWR, 0777);
++	if (mapfd == -1) {
++		printf("Error creating the shared memory segment \n");
++		exit(1);
++	}
++
++	if (ftruncate(mapfd, sizeof(struct MAPdata)) == -1) {
++		printf("Truncate failed \n");
++		exit(1);
++	}
++	
++	MAPptr = mmap(NULL, sizeof(struct MAPdata),
++       PROT_READ | PROT_WRITE, MAP_SHARED, mapfd, 0);
++	if (MAPptr == MAP_FAILED) {
++		printf("Mmap failed \n");
++		exit(1);
++	}
++
++	if (MAPptr->valid_threads) {
++		map_mode = MAPptr->mode; 
++		*map_num_threads = MAPptr->numthreads;
++	}
++	
++  rc = pthread_create(&sthread, NULL, map_monitor, NULL);
++  if (rc){
++    printf("ERROR; return code from pthread_create() is %d\n", rc);
++    exit(-1);
++  }
++  return 0;
++}
++
++double*
++omp_team_progress()
++{
++  scale_add = 1;
++	if (MAPptr)
++		MAPptr->valid_progress = 1;
++  return map_progress;
++}
++ialias (omp_team_progress)
++
+ static void
+ parse_acc_device_type (void)
+ {
+@@ -1242,6 +1433,7 @@
+   gomp_mutex_init (&gomp_managed_threads_lock);
+ #endif
+   gomp_init_num_threads ();
++	printf("In initialize:: %lu  \n", gomp_global_icv.nthreads_var);
+   gomp_available_cpus = gomp_global_icv.nthreads_var;
+   if (!parse_unsigned_long_list ("OMP_NUM_THREADS",
+ 				 &gomp_global_icv.nthreads_var,
+@@ -1303,6 +1495,7 @@
+   /* Not strictly environment related, but ordering constructors is tricky.  */
+   pthread_attr_init (&gomp_thread_attr);
+   pthread_attr_setdetachstate (&gomp_thread_attr, PTHREAD_CREATE_DETACHED);
++	map_create_control();
+ 
+   if (parse_stacksize ("OMP_STACKSIZE", &stacksize)
+       || parse_stacksize ("GOMP_STACKSIZE", &stacksize)
+diff -ruN -x '*mpfr*' -x '*mpc*' -x '*isl*' -x configure -x '*.guess' -x '*boostrap*' -x '*.in*' -x '*.am' -x '*.pl' -x '*.sub' -x '*.m4' -x '*assert*' -x '*Change*' -x '*gmp*' gcc-8.1.0_original/libgomp/icv.c ../gcc-8.1.0-sharan-11-7-2021-backup/libgomp/icv.c
+--- gcc-8.1.0_original/libgomp/icv.c	2021-11-07 20:04:56.798351655 -0500
++++ ../gcc-8.1.0-sharan-11-7-2021-backup/libgomp/icv.c	2021-11-07 19:42:27.165009779 -0500
+@@ -29,12 +29,23 @@
+ #include "libgomp.h"
+ #include "gomp-constants.h"
+ #include <limits.h>
++#include <stdio.h>
+ 
+ void
+ omp_set_num_threads (int n)
+ {
+   struct gomp_task_icv *icv = gomp_icv (true);
+-  icv->nthreads_var = (n > 0 ? n : 1);
++  if (icv != NULL)
++	icv->nthreads_var = (n > 0 ? n : 1);
++  if (map_num_threads != NULL && icv != NULL)
++  {
++        *map_num_threads = icv->nthreads_var;
++        printf("Set num %lu \n", *map_num_threads);
++  }
++  else
++	printf("Null while setting num threads \n");
++  return;
++
+ }
+ 
+ void
+diff -ruN -x '*mpfr*' -x '*mpc*' -x '*isl*' -x configure -x '*.guess' -x '*boostrap*' -x '*.in*' -x '*.am' -x '*.pl' -x '*.sub' -x '*.m4' -x '*assert*' -x '*Change*' -x '*gmp*' gcc-8.1.0_original/libgomp/libgomp.h ../gcc-8.1.0-sharan-11-7-2021-backup/libgomp/libgomp.h
+--- gcc-8.1.0_original/libgomp/libgomp.h	2021-11-07 20:04:56.796351576 -0500
++++ ../gcc-8.1.0-sharan-11-7-2021-backup/libgomp/libgomp.h	2021-11-07 19:42:27.151009220 -0500
+@@ -52,6 +52,9 @@
+ #include <stdlib.h>
+ #include <stdarg.h>
+ 
++
++#define MAX_CONTEXTS 80
++#define MAP_CACHE_PAD 64
+ /* Needed for memset in priority_queue.c.  */
+ #if _LIBGOMP_CHECKING_
+ # ifdef STRING_WITH_STRINGS
+@@ -128,6 +131,7 @@
+ #include "ptrlock.h"
+ 
+ 
++#define MAP_PRINT 0
+ /* This structure contains the data to control one work-sharing construct,
+    either a LOOP (FOR/DO) or a SECTIONS.  */
+ 
+@@ -644,6 +648,11 @@
+   GOMP_CANCEL_TASKGROUP = 8
+ };
+ 
++unsigned long *map_num_threads; 
++double *map_progress, *map_prev;
++volatile int map_comp_flag, map_comp_threads, map_comp_set;
++volatile int map_omp_specify, map_mode;
++volatile int scale_add;
+ /* ... and here is that TLS data.  */
+ 
+ #if defined __nvptx__
+diff -ruN -x '*mpfr*' -x '*mpc*' -x '*isl*' -x configure -x '*.guess' -x '*boostrap*' -x '*.in*' -x '*.am' -x '*.pl' -x '*.sub' -x '*.m4' -x '*assert*' -x '*Change*' -x '*gmp*' gcc-8.1.0_original/libgomp/loop.c ../gcc-8.1.0-sharan-11-7-2021-backup/libgomp/loop.c
+--- gcc-8.1.0_original/libgomp/loop.c	2021-11-07 20:04:56.796351576 -0500
++++ ../gcc-8.1.0-sharan-11-7-2021-backup/libgomp/loop.c	2021-11-07 19:42:27.154009340 -0500
+@@ -27,6 +27,7 @@
+ 
+ #include <limits.h>
+ #include <stdlib.h>
++#include <stdio.h>
+ #include "libgomp.h"
+ 
+ 
+@@ -560,7 +561,17 @@
+ {
+   struct gomp_team *team;
+ 
++	if (MAP_PRINT) printf("\n Team start %lu %d \n", (unsigned long)data, num_threads);
++  map_omp_specify = num_threads;
+   num_threads = gomp_resolve_num_threads (num_threads, 0);
++  if (map_omp_specify  == 0)
++  {
++          num_threads = *(map_num_threads);
++          
++          if (MAP_PRINT) printf("Loop start: Fresh new nthreads is %d \n",num_threads);
++  }
++  if (MAP_PRINT) printf("Loop start: New nthreads is %d \n",num_threads);
++
+   team = gomp_new_team (num_threads);
+   gomp_loop_init (&team->work_shares[0], start, end, incr, sched, chunk_size);
+   gomp_team_start (fn, data, num_threads, flags, team);
+diff -ruN -x '*mpfr*' -x '*mpc*' -x '*isl*' -x configure -x '*.guess' -x '*boostrap*' -x '*.in*' -x '*.am' -x '*.pl' -x '*.sub' -x '*.m4' -x '*assert*' -x '*Change*' -x '*gmp*' gcc-8.1.0_original/libgomp/parallel.c ../gcc-8.1.0-sharan-11-7-2021-backup/libgomp/parallel.c
+--- gcc-8.1.0_original/libgomp/parallel.c	2021-11-07 20:04:56.797351615 -0500
++++ ../gcc-8.1.0-sharan-11-7-2021-backup/libgomp/parallel.c	2021-11-07 19:42:27.151009220 -0500
+@@ -27,7 +27,7 @@
+ 
+ #include "libgomp.h"
+ #include <limits.h>
+-
++#include <stdio.h>
+ 
+ /* Determine the number of threads to be launched for a PARALLEL construct.
+    This algorithm is explicitly described in OpenMP 3.0 section 2.4.1.
+@@ -123,6 +123,18 @@
+ GOMP_parallel_start (void (*fn) (void *), void *data, unsigned num_threads)
+ {
+   num_threads = gomp_resolve_num_threads (num_threads, 0);
++
++  if (MAP_PRINT) printf("\n Team start %lu %d \n", (unsigned long)data, num_threads);
++  map_omp_specify = num_threads;
++  num_threads = gomp_resolve_num_threads (num_threads, 0);
++  if (map_omp_specify  == 0)
++  {
++          num_threads = *(map_num_threads);
++          
++          if (MAP_PRINT) printf("Parallel start: Fresh new nthreads is %d \n",num_threads);
++  }
++  if (MAP_PRINT) printf("Parallel start: New nthreads is %d \n",num_threads);
++
+   gomp_team_start (fn, data, num_threads, 0, gomp_new_team (num_threads));
+ }
+ 
+@@ -163,7 +175,18 @@
+ void
+ GOMP_parallel (void (*fn) (void *), void *data, unsigned num_threads, unsigned int flags)
+ {
++	if (MAP_PRINT) printf("\n Team start %lu %d \n", (unsigned long)data, num_threads);
++  map_omp_specify = num_threads;
+   num_threads = gomp_resolve_num_threads (num_threads, 0);
++  // num_threads = gomp_resolve_num_threads (num_threads, 0);
++  if (map_omp_specify  == 0)
++  {
++          num_threads = *(map_num_threads);
++          
++          if (MAP_PRINT) printf("GOMP Parallel start: Fresh new nthreads is %d \n",num_threads);
++  }
++  if (MAP_PRINT) printf("GOMP Parallel start: New nthreads is %d \n",num_threads);
++
+   gomp_team_start (fn, data, num_threads, flags, gomp_new_team (num_threads));
+   fn (data);
+   ialias_call (GOMP_parallel_end) ();
+@@ -241,6 +264,86 @@
+ }
+ 
+ int
++omp_get_flag_shar (void)
++{
++  struct gomp_team *team = gomp_thread ()->ts.team;
++  int tid = gomp_thread ()->ts.team_id;
++	int teamnthr = (team ? team->nthreads : 1);
++
++  // printf("\n In get_flag_shar %d %d %u \n", tid, map_comp_flag, map_comp_threads);
++  if (map_comp_flag == 0)
++  {
++		if (__sync_bool_compare_and_swap (&map_comp_flag, 0, 1))
++		{
++			if (map_omp_specify != 0)
++				__atomic_store_n(&map_comp_threads, teamnthr, __ATOMIC_SEQ_CST);					
++			else {
++				if (*map_num_threads <= teamnthr)
++					__atomic_store_n(&map_comp_threads, *map_num_threads, __ATOMIC_SEQ_CST);					
++				else
++					__atomic_store_n(&map_comp_threads, teamnthr, __ATOMIC_SEQ_CST);					
++			}
++			__atomic_store_n(&map_comp_set, 1, __ATOMIC_SEQ_CST);
++			// printf("FLAG Wrote 1 in comp %d %d \n", map_comp_threads, map_comp_flag);
++		}
++  }
++	while (map_comp_set == 0);
++	if (map_comp_threads == 0) {
++		map_comp_threads = teamnthr;
++		printf("Set 1 for was 0. Now %d \n", map_comp_threads);
++	}
++  if (map_comp_flag == 0) {
++  	printf("\n \n \n ERROR.. Comp is set to ZERO \n \n \n");
++	}
++	//printf ("Thread TID %d Set for %d %d \n", tid, map_comp_threads, map_comp_flag);
++
++  if (tid < map_comp_threads)
++  {
++  			// printf("\n In get_flag_shar %d %d %u \n", tid, map_comp_flag, map_comp_threads);
++        return 0;
++  }
++  else
++  {
++        // printf("Returning 1 %d %d \n", tid, map_comp_threads);
++        return 1;
++  }
++}
++
++int
++omp_get_num_threads_shar (void)
++{
++  struct gomp_team *team = gomp_thread ()->ts.team;
++
++	int teamnthr = (team ? team->nthreads : 1);
++  // printf("\n In get_num_threads_shar %d %lu %d %d \n", map_omp_specify, *map_num_threads, team->nthreads, map_comp_flag);
++  if (map_comp_flag == 0)
++  {
++  	if (__sync_bool_compare_and_swap (&map_comp_flag, 0, 1))
++    {
++    	if (map_omp_specify != 0)               
++				__atomic_store_n(&map_comp_threads, teamnthr, __ATOMIC_SEQ_CST);					
++			else {
++				if (*map_num_threads <= teamnthr)
++					__atomic_store_n(&map_comp_threads, *map_num_threads, __ATOMIC_SEQ_CST);					
++				else
++					__atomic_store_n(&map_comp_threads, teamnthr, __ATOMIC_SEQ_CST);					
++			}
++ 
++      // printf("TID %d Wrote 1 in comp %d %d \n", gomp_thread ()->ts.team_id, map_comp_threads, map_comp_flag);
++			__atomic_store_n(&map_comp_set, 1, __ATOMIC_SEQ_CST);
++    }
++  }
++	while (map_comp_set == 0);
++	if (map_comp_threads == 0) {
++		map_comp_threads = teamnthr;
++		printf("Set for was 0. Now %d \n", map_comp_threads);
++	}
++	// printf ("Thread %d Set for %d %d \n",gomp_thread ()->ts.team_id, map_comp_threads, map_comp_flag);
++  return map_comp_threads;
++}
++
++
++int
+ omp_get_thread_num (void)
+ {
+   return gomp_thread ()->ts.team_id;
+diff -ruN -x '*mpfr*' -x '*mpc*' -x '*isl*' -x configure -x '*.guess' -x '*boostrap*' -x '*.in*' -x '*.am' -x '*.pl' -x '*.sub' -x '*.m4' -x '*assert*' -x '*Change*' -x '*gmp*' gcc-8.1.0_original/libgomp/team.c ../gcc-8.1.0-sharan-11-7-2021-backup/libgomp/team.c
+--- gcc-8.1.0_original/libgomp/team.c	2021-11-07 20:04:56.796351576 -0500
++++ ../gcc-8.1.0-sharan-11-7-2021-backup/libgomp/team.c	2021-11-07 19:42:27.165009779 -0500
+@@ -29,6 +29,7 @@
+ #include "libgomp.h"
+ #include "pool.h"
+ #include <stdlib.h>
++#include <stdio.h>
+ #include <string.h>
+ 
+ #ifdef LIBGOMP_USE_PTHREADS
+@@ -145,7 +146,7 @@
+     {
+       struct gomp_thread_pool *pool = gomp_get_thread_pool (thr, nthreads);
+       struct gomp_team *last_team = pool->last_team;
+-      if (last_team != NULL && last_team->nthreads == nthreads)
++      if (last_team != NULL && last_team->nthreads == nthreads && map_mode == 0)
+         {
+           pool->last_team = NULL;
+           return last_team;
+@@ -306,13 +307,17 @@
+   bool nested;
+   struct gomp_thread_pool *pool;
+   unsigned i, n, old_threads_used = 0;
++	unsigned old_old_threads_used = 0;
+   pthread_attr_t thread_attr, *attr;
+   unsigned long nthreads_var;
+   char bind, bind_var;
+   unsigned int s = 0, rest = 0, p = 0, k = 0;
+   unsigned int affinity_count = 0;
+   struct gomp_thread **affinity_thr = NULL;
+-
++	/*
++	if (*map_num_threads > 1 && nthreads > 1)
++		nthreads = *map_num_threads;
++	printf("Team start %d %lu \n", nthreads, *map_num_threads); */
+   thr = gomp_thread ();
+   nested = thr->ts.level;
+   pool = thr->thread_pool;
+@@ -434,22 +439,27 @@
+   if (!nested)
+     {
+       old_threads_used = pool->threads_used;
++			old_old_threads_used = old_threads_used;
+ 
++			/* if (map_mode) {
++				old_threads_used = 0;
++			}*/
++			
+       if (nthreads <= old_threads_used)
+-	n = nthreads;
++				n = nthreads;
+       else if (old_threads_used == 0)
+-	{
+-	  n = 0;
+-	  gomp_simple_barrier_init (&pool->threads_dock, nthreads);
+-	}
++			{
++			  n = 0;
++	 			gomp_simple_barrier_init (&pool->threads_dock, nthreads);
++			}
+       else
+-	{
+-	  n = old_threads_used;
++			{
++			  n = old_threads_used;
+ 
+-	  /* Increase the barrier threshold to make sure all new
+-	     threads arrive before the team is released.  */
+-	  gomp_simple_barrier_reinit (&pool->threads_dock, nthreads);
+-	}
++	  		/* Increase the barrier threshold to make sure all new
++	     		threads arrive before the team is released.  */
++			  gomp_simple_barrier_reinit (&pool->threads_dock, nthreads);
++			}
+ 
+       /* Not true yet, but soon will be.  We're going to release all
+ 	 threads from the dock, and those that aren't part of the
+@@ -476,6 +486,7 @@
+ 	  unsigned int place = 0;
+ 	  if (__builtin_expect (gomp_places_list != NULL, 0))
+ 	    {
++				printf("In affinity bind 1 \n");
+ 	      switch (bind)
+ 		{
+ 		case omp_proc_bind_true:
+@@ -555,7 +566,7 @@
+ 		      memset (affinity_thr, '\0',
+ 			      team->prev_ts.place_partition_len
+ 			      * sizeof (struct gomp_thread *));
+-		      for (j = i; j < old_threads_used; j++)
++		      for (j = i; j < old_old_threads_used; j++)
+ 			{
+ 			  if (pool->threads[j]->place
+ 			      > team->prev_ts.place_partition_off
+@@ -570,12 +581,12 @@
+ 			    }
+ 			  pool->threads[j] = NULL;
+ 			}
+-		      if (nthreads > old_threads_used)
+-			memset (&pool->threads[old_threads_used],
+-				'\0', ((nthreads - old_threads_used)
++		      if (nthreads > old_old_threads_used)
++			memset (&pool->threads[old_old_threads_used],
++				'\0', ((nthreads - old_old_threads_used)
+ 				       * sizeof (struct gomp_thread *)));
+ 		      n = nthreads;
+-		      affinity_count = old_threads_used - i;
++		      affinity_count = old_old_threads_used - i;
+ 		    }
+ 		  if (affinity_count == 0)
+ 		    break;
+@@ -635,9 +646,10 @@
+ 	     to find exactly as many old threads as we'd find
+ 	     without affinity, we don't need to handle this
+ 	     specially anymore.  */
+-	  if (nthreads <= old_threads_used
+-	      ? (affinity_count == old_threads_used - nthreads)
+-	      : (i == old_threads_used))
++		printf("In affinity bind 2 \n");
++	  if (nthreads <= old_old_threads_used
++	      ? (affinity_count == old_old_threads_used - nthreads)
++	      : (i == old_old_threads_used))
+ 	    {
+ 	      if (team->prev_ts.place_partition_len > 64)
+ 		free (affinity_thr);
+@@ -691,11 +703,11 @@
+ 
+     }
+ 
+-  if (__builtin_expect (nthreads + affinity_count > old_threads_used, 0))
++  if (__builtin_expect (nthreads + affinity_count > old_old_threads_used, 0))
+     {
+-      long diff = (long) (nthreads + affinity_count) - (long) old_threads_used;
++      long diff = (long) (nthreads + affinity_count) - (long) old_old_threads_used;
+ 
+-      if (old_threads_used == 0)
++      if (old_old_threads_used == 0)
+ 	--diff;
+ 
+ #ifdef HAVE_SYNC_BUILTINS
+@@ -836,10 +848,10 @@
+      set to NTHREADS + AFFINITY_COUNT.  For NTHREADS < OLD_THREADS_COUNT,
+      AFFINITY_COUNT if non-zero will be always at least
+      OLD_THREADS_COUNT - NTHREADS.  */
+-  if (__builtin_expect (nthreads < old_threads_used, 0)
++  if (__builtin_expect (nthreads < old_old_threads_used, 0)
+       || __builtin_expect (affinity_count, 0))
+     {
+-      long diff = (long) nthreads - (long) old_threads_used;
++      long diff = (long) nthreads - (long) old_old_threads_used;
+ 
+       if (affinity_count)
+ 	diff = -affinity_count;
