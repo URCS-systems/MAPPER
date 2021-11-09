@@ -1,11 +1,8 @@
 #!/bin/env python3
 
-import sys
-# import numpy as np
-# import pandas as pd
-import os
 import re
 import csv
+import sys
 from pathlib import Path
 from math import log, exp
 from functools import reduce
@@ -13,8 +10,7 @@ from functools import reduce
 results_dir = 'results'
 standalone_dir = '1'
 linux_schedname = 'linux'
-# I should've called these 'schednames' but it's too late now and I'm too lazy
-strategies = [linux_schedname]
+schednames = [linux_schedname]  # order matters
 results = {}
 
 def get_standalone(appname):
@@ -25,13 +21,16 @@ def get_standalone(appname):
 
 # read in all results
 for f in Path(results_dir).glob('*/*/*.csv'):
-    workload_size, strategy = re.match(results_dir + r'/(\w+)/(\w+)/.*', str(f)).group(1,2)
+    match = re.match(results_dir + r'/(\w+)/(\w+)/.*', str(f))
+    if match is None:
+        raise Exception(f'csv {f} is not in an expected hierarchy (workload size/scheduler/*.csv)')
+    workload_size, scheduler = match.group(1,2)
 
     if not workload_size in results:
         results[workload_size] = {}
 
-    if not strategy in results[workload_size]:
-        results[workload_size][strategy] = []
+    if not scheduler in results[workload_size]:
+        results[workload_size][scheduler] = []
 
     workload = { 'f': f, 'apps': [], 'data': [] }
 
@@ -54,17 +53,19 @@ for f in Path(results_dir).glob('*/*/*.csv'):
         raise Exception(f'{f}: has no apps!')
 
     # check for other things
-    #for app in workload['apps']:
-        #standalone = Path(results_dir) / standalone_dir / linux_schedname / f'{app}-Linux.txt.csv'
-        #if not (Path('workloads') / f'{app}.txt').exists():
-        #    raise Exception(f'{f}: app {app} does not exist')
-        #if not standalone.exists():
-        #    raise Exception(f'{f}: app {app} does not have a standalone to compare to ({standalone} does not exist)')
+    for app in workload['apps']:
+        standalone = Path(results_dir) / standalone_dir / linux_schedname / f'{app}-Linux.txt.csv'
+        if not (Path('workloads') / f'{app}.txt').exists():
+            #raise Exception(f'{f}: app {app} does not exist')
+            print(f'WARNING: {f}: app {app} does not exist', file=sys.stderr)
+        if not standalone.exists():
+            #raise Exception(f'{f}: app {app} does not have a standalone to compare to ({standalone} does not exist)')
+            print(f'WARNING: {f}: app {app} does not have a standalone to compare to ({standalone} does not exist)', file=sys.stderr)
 
-    if not strategy in strategies:
-        strategies.append(strategy)
+    if not scheduler in schednames:
+        schednames.append(scheduler)
 
-    results[workload_size][strategy].append(workload)
+    results[workload_size][scheduler].append(workload)
 
 # check for some things
 if not standalone_dir in results:
@@ -75,7 +76,7 @@ if not linux_schedname in results[standalone_dir]:
 
 # verify our loaded data
 for (workload_size, strategy_list) in results.items():
-    for (strategy, workload_list) in strategy_list.items():
+    for (scheduler, workload_list) in strategy_list.items():
         for workload in workload_list:
             for app in workload['apps']:
                 if not app in reduce(lambda a,b: a+b, map(lambda a: a['apps'], results[standalone_dir][linux_schedname])):
@@ -83,7 +84,7 @@ for (workload_size, strategy_list) in results.items():
 
 # compute average runtimes
 for (workload_size, strategy_list) in results.items():
-    for (strategy, workload_list) in strategy_list.items():
+    for (scheduler, workload_list) in strategy_list.items():
         for workload in workload_list:
             # get average runtimes for all apps
             apps_avg_runtime = {appname: 0 for appname in workload['apps']}
@@ -101,7 +102,7 @@ for (workload_size, strategy_list) in results.items():
 
 # compute speedups
 for (workload_size, strategy_list) in results.items():
-    for (strategy, workload_list) in strategy_list.items():
+    for (scheduler, workload_list) in strategy_list.items():
         for workload in workload_list:
             # if this is not a standalone item
             if workload_size != standalone_dir:
@@ -109,7 +110,10 @@ for (workload_size, strategy_list) in results.items():
                 workload['avg-speedups'] = {}
                 for (app, avg_runtime) in workload['avg-runtimes'].items():
                     standalone_workload = get_standalone(app)
-                    workload['avg-speedups'][app] = standalone_workload['avg-runtimes'][app] / workload['avg-runtimes'][app]
+                    if standalone_workload is None:
+                        workload['avg-speedups'][app] = None
+                    else:
+                        workload['avg-speedups'][app] = standalone_workload['avg-runtimes'][app] / workload['avg-runtimes'][app]
                 avg_speedup_vals = list(workload['avg-speedups'].values())
                 # calculate geomean
                 workload['gmean-speedup'] = exp(reduce(lambda a,b: a+b, map(lambda a: log(a), avg_speedup_vals))/len(avg_speedup_vals))
@@ -119,10 +123,10 @@ for (workload_size, strategy_list) in results.items():
 for (workload_size, strategy_list) in results.items():
     with open(f'results-page-{workload_size}.csv', mode='a', newline='') as page_file:
         csv_writer = csv.writer(page_file, delimiter=',')
-        for (strategy, workload_list) in strategy_list.items():
+        for (scheduler, workload_list) in strategy_list.items():
             for workload in workload_list:
                 # write the header
-                csv_writer.writerow([strategy])
+                csv_writer.writerow([scheduler])
                 # add an extra column on the left to align with AMean
                 csv_writer.writerow([' '] + list(workload['data'][0].keys()))
 
@@ -140,20 +144,20 @@ for (workload_size, strategy_list) in results.items():
 
 # generate summary page
 with open(f'results-page-summary.csv', mode='a') as page_file:
-    csv_writer = csv.DictWriter(page_file, fieldnames=[' ', 'workload'] + strategies)
+    csv_writer = csv.DictWriter(page_file, fieldnames=[' ', 'workload'] + schednames)
     for (workload_size, strategy_list) in results.items():
         # don't display standalone items on the summary page
         if workload_size == standalone_dir:
             continue
-        csv_writer.writerow(dict([(' ', f'{workload_size} apps'), ('workload','')] + [(s,'') for s in strategies]))
+        csv_writer.writerow(dict([(' ', f'{workload_size} apps'), ('workload','')] + [(s,'') for s in schednames]))
         csv_writer.writeheader()
         workload_rows = {}
-        for (strategy, workload_list) in strategy_list.items():
+        for (scheduler, workload_list) in strategy_list.items():
             for workload in workload_list:
                 workload_name = reduce(lambda a,b: f'{a}-{b}', workload['apps'])
                 if not workload_name in workload_rows:
-                    workload_rows[workload_name] = {s:0 for s in strategies}
-                workload_rows[workload_name][strategy] = workload['gmean-speedup']
+                    workload_rows[workload_name] = {s:0 for s in schednames}
+                workload_rows[workload_name][scheduler] = workload['gmean-speedup']
 
         for (workload_name, strategy_speedups) in workload_rows.items():
             csv_writer.writerow(dict([(' ',''), ('workload', workload_name)] + list(strategy_speedups.items())))
