@@ -53,7 +53,7 @@ int nprocs;
 unsigned test_length = 60 * 4;   /* in seconds */
 struct timespec start, end;
 
-bool wants_to_quit;
+bool user_wants_to_quit;
 bool stop_thread;
 bool killing_jobs;
 
@@ -82,7 +82,7 @@ void kill_jobs(void) {
 void handle_quit(int sig) {
     printf("Received signal: %s\n", strsignal(sig));
     if (sig != SIGALRM)
-        wants_to_quit = true;
+        user_wants_to_quit = true;
     if (!killing_jobs) {
         killing_jobs = true;
         kill_jobs();
@@ -92,8 +92,8 @@ void handle_quit(int sig) {
 
 void *monitor_cpuset_changes(void *arg) {
     /* read procfs every second and compare change in cpusets */
-    while (!wants_to_quit && !stop_thread) {
-        for (struct job *jb = job_list; jb && !wants_to_quit && !stop_thread; jb = jb->next) {
+    while (!user_wants_to_quit && !stop_thread) {
+        for (struct job *jb = job_list; jb && !user_wants_to_quit && !stop_thread; jb = jb->next) {
             char cmd[1024];
             char *buf;
             FILE *pf;
@@ -211,7 +211,14 @@ static struct job *find_job_id_by_pid(pid_t pid) {
     return NULL;
 }
 
-static pid_t run_job(struct job *jb) {
+static pid_t run_job(struct job *jb, const char *workload_name) {
+    /* create directory for workload if it doesn't exist */
+    if (mkdir(workload_name, 0755) != 0) {
+        if (errno != EEXIST)
+            fprintf(stderr, "%sWARNING: could not create directory %s - %m%s", warn_color, workload_name, reset);
+    }
+
+    /* reset signal handlers for child process to process defaults */
     void (*old)(int);
 
     old = signal(SIGTERM, SIG_DFL);
@@ -223,7 +230,7 @@ static pid_t run_job(struct job *jb) {
 
     if (jb->pid == (pid_t) -1) {
         perror("fork()");
-        exit(EXIT_FAILURE);
+        return jb->pid;
     }
 
     if (jb->pid == 0) {
@@ -238,7 +245,7 @@ static pid_t run_job(struct job *jb) {
         if ((mypid = setsid()) == (pid_t) -1)
             mypid = getpid();
 
-        snprintf(jb->outfile, sizeof jb->outfile, "%s-v%d.%d.out", jb->name, jb->total_runs + 1, mypid);
+        snprintf(jb->outfile, sizeof jb->outfile, "%s/%s-v%d.%d.out", workload_name, jb->name, jb->total_runs + 1, mypid);
 
         if (getrlimit(RLIMIT_NOFILE, &lm) != -1) {
             lm.rlim_max = 1 << 14;
@@ -269,8 +276,9 @@ static pid_t run_job(struct job *jb) {
     }
 
     /* parent */
-    snprintf(jb->outfile, sizeof jb->outfile, "%s-v%d.%d.out", jb->name, jb->total_runs + 1, jb->pid);
+    snprintf(jb->outfile, sizeof jb->outfile, "%s/%s-v%d.%d.out", workload_name, jb->name, jb->total_runs + 1, jb->pid);
 
+    /* restore signal handlers for parent */
     signal(SIGTERM, old);
     signal(SIGQUIT, old);
     signal(SIGINT, old);
@@ -330,17 +338,15 @@ static int parse_result(const struct job *jb, double *res)
     return ret;
 }
 
-int test_joblist(const char *filename, FILE *input, FILE *csv, bool write_header) {
+int test_joblist(const char *filename, FILE *input, FILE *csv, const char *workload_name, bool write_header) {
     /* read jobs */
     char *line = NULL;
     size_t sz = 0;
     int lineno = 1;
     char home_dir[512];
-    bool ended = false;
     double total_runtime = 0;
     int total_context_changes = 0;
     int total_cpuset_changes = 0;
-
 
     snprintf(home_dir, sizeof home_dir - 1, "%s", getenv("HOME"));
 
@@ -435,7 +441,7 @@ int test_joblist(const char *filename, FILE *input, FILE *csv, bool write_header
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
     alarm(test_length);
     for (struct job *jb = job_list; jb; jb = jb->next) {
-        if (run_job(jb) != (pid_t) -1)
+        if (run_job(jb, workload_name) != (pid_t) -1)
             clock_gettime(CLOCK_MONOTONIC_RAW, &jb->start);
     }
 
@@ -448,24 +454,22 @@ int test_joblist(const char *filename, FILE *input, FILE *csv, bool write_header
 
     pid_t pid;
     int wstatus;
-    while (!((pid = waitpid(-1, &wstatus, 0)) == -1 && errno == ECHILD)) {
+    while ((pid = waitpid(-1, &wstatus, 0)) != -1 || errno == EINTR || errno == EAGAIN) {
         struct job *jb = find_job_id_by_pid(pid);
+        if (!jb)
+            /* this isn't a job */
+            continue;
+
+        if (WIFEXITED(wstatus) || WIFSIGNALED(wstatus))
+            clock_gettime(CLOCK_MONOTONIC_RAW, &jb->end);   /* mark end time for this job */
+
         struct timespec cur;
         double elapsed;
 
         clock_gettime(CLOCK_MONOTONIC_RAW, &cur);
         elapsed = timespec_to_secs(timespec_sub(cur, start));
-
-        if (!jb)
-            /* this isn't a job */
-            continue;
-
-        clock_gettime(CLOCK_MONOTONIC_RAW, &jb->end);
-
-        if (elapsed > test_length || wants_to_quit) {
-            /* don't count this test result */
-            if (!ended)
-                clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+        if (elapsed > test_length || user_wants_to_quit) {
+            /* don't count this run */
             continue;
         }
 
@@ -507,12 +511,13 @@ int test_joblist(const char *filename, FILE *input, FILE *csv, bool write_header
         if (jb->failed_runs >= MAX_FAILED)
             fprintf(stderr, "%sWARNING: %s has failed too many times (%d).%s\n", 
                     warn_color, jb->name, jb->failed_runs, reset);
-        else if (run_job(jb) != (pid_t) -1)
+        else if (run_job(jb, workload_name) != (pid_t) -1)
             clock_gettime(CLOCK_MONOTONIC_RAW, &jb->start);
 
         pthread_mutex_unlock(&jb->mtx);
     }
 
+    clock_gettime(CLOCK_MONOTONIC_RAW, &end);
     stop_thread = true;
 
     if (pthread_join(monitor_thread, NULL) != 0)
@@ -625,7 +630,7 @@ int main(int argc, char *argv[]) {
     signal(SIGINT, &handle_quit);
     signal(SIGALRM, &handle_quit);
 
-    for (int i = 0; i < num_joblists && !wants_to_quit; ++i) {
+    for (int i = 0; i < num_joblists && !user_wants_to_quit; ++i) {
         FILE *input = NULL;
         char *log_name = strdup(jls[i]);
         const char *log_base = NULL;
@@ -640,16 +645,19 @@ int main(int argc, char *argv[]) {
 
         log_base = basename(log_name);
 
-        for (int j = 0; j < ntimes && !wants_to_quit; ++j) {
+        for (int j = 0; j < ntimes && !user_wants_to_quit; ++j) {
             FILE *log = NULL;
-            char log_name2[256];
+            char csv_name[256] = { 0 };
+            char *ext_ptr = strrchr(log_base, '.');
+            char workload_name[256] = { 0 };
 
-            snprintf(log_name2, sizeof log_name2 - 1, "%s.csv", log_base);
-            if (!(log = fopen(log_name2, j == 0 ? "w" : "a"))) {
-                fprintf(stderr, "failed to open `%s':%m\n", log_name2);
+            snprintf(csv_name, sizeof csv_name - 1, "%s.csv", log_base);
+            strncpy(workload_name, log_base, ext_ptr != NULL ? (size_t)(ext_ptr - log_base) : strlen(log_base));
+            if (!(log = fopen(csv_name, j == 0 ? "w" : "a"))) {
+                fprintf(stderr, "failed to open `%s':%m\n", csv_name);
                 return 1;
             }
-            if (test_joblist(jls[i], input, log, j == 0) != 0)
+            if (test_joblist(jls[i], input, log, workload_name, j == 0) != 0)
                 return 1;
             fclose(log);
             rewind(input);
