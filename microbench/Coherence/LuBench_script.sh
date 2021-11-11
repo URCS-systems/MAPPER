@@ -1,5 +1,6 @@
 #!/bin/sh 
 ## declare an array variable
+# r3c=UNHALTED_CORE_CYCLE,rc0=INSTRUCTIONS_RETIRED,r06d2=SNOOP HIT+HITM,r10d3=REMOTE HITM,r412e=LLC MISSES
 declare -a arraySize=("4" "8" "16" "32" "64" "128" "256" "512")
 
 mkdir -p coherence_output
