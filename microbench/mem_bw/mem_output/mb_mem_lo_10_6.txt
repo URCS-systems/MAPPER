@@ -1,0 +1,6 @@
+Elapsed time is 58.804665sec
+Elapsed time is 58.902898sec
+Elapsed time is 58.910617sec
+Elapsed time is 59.437127sec
+Elapsed time is 59.455973sec
+Elapsed time is 59.478174sec

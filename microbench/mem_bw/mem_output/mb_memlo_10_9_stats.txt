@@ -1,0 +1,11 @@
+# started on Thu Nov 11 15:29:15 2021
+
+
+ Performance counter stats for './mb_main lo 10 9':
+
+ 1,231,383,945,971      r3c:u                                                       
+   193,477,140,577      rc0:u                                                       
+     4,718,714,747      r412e:u                                                     
+
+      63.113965393 seconds time elapsed
+
